@@ -1,1 +1,1 @@
-# Maganng_Ombudsman
+# Magang_Ombudsman
