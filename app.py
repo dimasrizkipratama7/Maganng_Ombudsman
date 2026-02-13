@@ -1,8 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
+from geopy.geocoders import Nominatim
+from geopy.extra.rate_limiter import RateLimiter
+from datetime import datetime
+import streamlit.components.v1 as components
 
-# --- KONFIGURASI HALAMAN ---
+# --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
     page_title="Dashboard Keasistenan IV - Ombudsman RI",
     page_icon="⚖️",
@@ -10,226 +15,410 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CUSTOM CSS UNTUK ESTETIKA ---
+# --- 2. CUSTOM CSS (TAMPILAN PREMIUM & PRINT) ---
 st.markdown("""
     <style>
-    /* Main container styling */
-    .main {
-        background-color: #f0f2f6; /* Soft light gray background */
-        padding-top: 20px;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"]  {
+        font-family: 'Inter', sans-serif;
     }
 
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff; /* White sidebar */
-        box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-        padding-top: 20px;
-    }
-    [data-testid="stSidebar"] .stButton {
-        width: 100%;
+    /* Background Utama */
+    .stApp {
+        background-color: #f4f6f9;
     }
 
-    /* Metric cards styling */
-    .stMetric {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* Softer shadow */
-        border: 1px solid #e0e0e0;
-        text-align: center;
-        margin-bottom: 15px;
+    /* Header Gradient */
+    .header-container {
+        background: linear-gradient(135deg, #003366 0%, #004a99 100%);
+        padding: 2rem;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(0,74,153,0.2);
     }
-    .stMetric > div > div:first-child { /* Value text */
-        font-size: 2.5em; /* Larger value font */
-        font-weight: bold;
-        color: #004a99; /* Ombudsman Blue */
+    .header-title {
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin: 0;
     }
-    .stMetric > div > div:nth-child(2) { /* Label text */
-        font-size: 1em;
-        color: #555555;
+    .header-subtitle {
+        font-size: 1rem;
+        opacity: 0.9;
+        margin-top: 5px;
     }
 
-    /* Chart containers styling */
-    .stPlotlyChart {
+    /* Styling Kartu (Card) */
+    .card-container {
+        background-color: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        margin-bottom: 20px;
+        border-top: 4px solid transparent;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card-container:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    }
+    
+    /* Aksen Warna Kartu */
+    .card-blue { border-top-color: #004a99; }
+    .card-orange { border-top-color: #e65100; }
+
+    /* Metric Styles */
+    [data-testid="stMetric"] {
         background-color: #ffffff;
         padding: 15px;
         border-radius: 10px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        margin-bottom: 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        border: 1px solid #f0f0f0;
+        text-align: center;
     }
-    
-    /* Header styling */
-    [data-testid="stHeader"] {
-        background-color: rgba(0,0,0,0); /* Transparent header */
+    [data-testid="stMetricLabel"] {
+        color: #666;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    [data-testid="stMetricValue"] {
+        color: #003366;
+        font-weight: 800;
+        font-size: 2rem;
     }
 
-    /* Expander styling */
-    [data-testid="stExpander"] {
+    /* Sidebar & Print Button */
+    [data-testid="stSidebar"] {
         background-color: #ffffff;
-        border: 1px solid #e0e0e0;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        padding: 10px;
+        border-right: 1px solid #eaeaea;
     }
-    
-    /* Title and Subheader styling */
-    h1 {
-        color: #004a99;
-        font-weight: 700;
+    .print-btn {
+        background-color: #e65100;
+        color: white;
+        padding: 12px;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+        border: none;
+        width: 100%;
+        box-shadow: 0 4px 6px rgba(230, 81, 0, 0.2);
     }
-    h3 {
-        color: #333333;
-        font-weight: 600;
+    .print-btn:hover {
+        background-color: #bf360c;
+        box-shadow: 0 6px 8px rgba(230, 81, 0, 0.3);
+    }
+
+    /* Mode Cetak */
+    /* Mode Cetak - Perbaikan */
+    @media print {
+        /* Sembunyikan semua elemen UI Streamlit yang ganggu */
+        [data-testid="stSidebar"], 
+        header, 
+        footer, 
+        .stDeployButton,
+        [data-testid="stToolbar"],
+        .no-print { 
+            display: none !important; 
+        }
+
+        /* Hilangkan scrollbar dan set background putih bersih */
+        .main, .stApp {
+            background-color: white !important;
+            color: black !important;
+        }
+
+        /* Paksa grafik Plotly agar lebarnya pas di kertas */
+        .js-plotly-plot {
+            width: 100% !important;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNGSI LOAD DATA ---
+# --- 3. FUNGSI LOGIKA ---
+
+def get_coordinates(df):
+    """Geocoding otomatis"""
+    geolocator = Nominatim(user_agent="ombudsman_dashboard_final_v2")
+    geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
+    unique_locations = df['Terlapor'].unique()
+    location_map = {}
+    
+    progress_bar = st.progress(0, text="Sedang memetakan lokasi...")
+    for i, loc in enumerate(unique_locations):
+        try:
+            location = geocode(f"{loc}, Indonesia")
+            if location:
+                location_map[loc] = [location.latitude, location.longitude]
+            else:
+                location_map[loc] = [-6.2088, 106.8456] # Default Jakarta
+        except:
+            location_map[loc] = [-6.2088, 106.8456]
+        progress_bar.progress((i + 1) / len(unique_locations))
+    
+    progress_bar.empty()
+    df['lat'] = df['Terlapor'].map(lambda x: location_map[x][0])
+    df['lon'] = df['Terlapor'].map(lambda x: location_map[x][1])
+    return df
+
 @st.cache_data
 def load_data():
     try:
         df = pd.read_excel("data_tanah.xlsx")
-        # Pastikan nama kolom sesuai. Contoh:
-        # df.columns = ['ID', 'Terlapor', 'Maladministrasi', 'Status', 'Tanggal Laporan'] 
-        # Atau jika nama kolom tidak sesuai, ganti df['Nama_Kolom_Asli'] di bawah
-        return df
-    except FileNotFoundError:
-        st.error("⚠️ File 'data_tanah.xlsx' tidak ditemukan di direktori yang sama.")
-        st.stop() # Hentikan eksekusi jika file tidak ada
+        
+        # Auto-detect tanggal
+        date_col_found = False
+        for col in df.columns:
+            if any(x in col.lower() for x in ['tanggal', 'tgl', 'date']):
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+                df.rename(columns={col: 'Tanggal Laporan'}, inplace=True)
+                date_col_found = True
+                break
+        
+        # Auto-geocoding
+        if 'Terlapor' in df.columns and ('lat' not in df.columns):
+            df = get_coordinates(df)
+            
+        return df, date_col_found
     except Exception as e:
-        st.error(f"⚠️ Gagal memuat data dari 'data_tanah.xlsx'. Pastikan format file benar dan kolom sesuai. Error: {e}")
+        st.error(f"Gagal memuat data: {e}")
         st.stop()
 
-# Load data (akan dijalankan sekali karena ada @st.cache_data)
-data = load_data()
+data, has_date = load_data()
+# --- SISIPKAN DI SINI (Setelah load_data) ---
+if not data.empty and has_date:
+    today = datetime.now()
+    # Hitung laporan yang belum selesai dan sudah lebih dari 30 hari
+    data['Hari_Berjalan'] = (today - data['Tanggal Laporan']).dt.days
+    mangkrak_mask = (data['Hari_Berjalan'] > 30) & (~data['Status'].str.contains('Selesai|Tutup', case=False, na=False))
+    total_mangkrak = len(data[mangkrak_mask])
+else:
+    total_mangkrak = 0
 
-# --- SIDEBAR DENGAN LOGO ---
+
+# --- 4. SIDEBAR (FILTER & SEARCH) ---
 with st.sidebar:
-    st.image("ombudsman logo.png", 
-             width=180, 
-             caption="Ombudsman Republik Indonesia")
-    st.markdown("---")
-    st.header("🔍 Filter Data Laporan")
+    st.image("ombudsman logo.png", width=160)
     
-    # Filter Instansi Terlapor
-    # Pastikan nama kolom 'Terlapor' ada di file Excel kamu
-    if 'Terlapor' in data.columns:
-        instansi_options = ["Semua Instansi"] + sorted(data["Terlapor"].unique().tolist())
-        selected_instansi = st.selectbox(
-            "Pilih Kantor Pertanahan:",
-            options=instansi_options,
-            index=0 # Default to "Semua Instansi"
+    st.markdown("### 🔎 Pencarian & Filter")
+    
+    # --- FITUR BARU: GLOBAL SEARCH ---
+    search_query = st.text_input("Cari Data (Nama/No/Wilayah):", placeholder="Ketik kata kunci...")
+    
+    st.divider()
+
+    start_date, end_date = None, None
+
+    # Filter Tanggal
+    if has_date:
+        min_date = data['Tanggal Laporan'].min().date()
+        max_date = data['Tanggal Laporan'].max().date()
+        
+        date_range = st.date_input(
+            "📅 Periode Laporan",
+            value=[min_date, max_date],
+            min_value=min_date,
+            max_value=max_date
         )
-        if selected_instansi != "Semua Instansi":
-            data_filtered = data[data["Terlapor"] == selected_instansi]
+        
+        # Terapkan Filter Tanggal
+        if isinstance(date_range, list) and len(date_range) == 2:
+            start_date, end_date = date_range
+            data_filtered = data[(data['Tanggal Laporan'].dt.date >= start_date) & 
+                                 (data['Tanggal Laporan'].dt.date <= end_date)]
         else:
             data_filtered = data
     else:
-        st.warning("Kolom 'Terlapor' tidak ditemukan di data Anda. Filter instansi dinonaktifkan.")
         data_filtered = data
 
-    # Filter Status Laporan
-    # Pastikan nama kolom 'Status' ada di file Excel kamu
+    # Terapkan Global Search (Logika AND dengan filter tanggal)
+    if search_query:
+        mask = data_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
+        data_filtered = data_filtered[mask]
+
+    # Filter Kategori (Instansi)
+    if 'Terlapor' in data.columns:
+        instansi_list = ["Semua Instansi"] + sorted(data_filtered["Terlapor"].unique().tolist())
+        sel_instansi = st.selectbox("📍 Instansi:", instansi_list)
+        if sel_instansi != "Semua Instansi":
+            data_filtered = data_filtered[data_filtered["Terlapor"] == sel_instansi]
+            
+    # Filter Status
     if 'Status' in data.columns:
-        status_options = ["Semua Status"] + sorted(data["Status"].unique().tolist())
-        selected_status = st.multiselect(
-            "Pilih Status Laporan:",
-            options=status_options,
-            default=status_options[0] if "Semua Status" in status_options else []
-        )
-        if "Semua Status" not in selected_status and selected_status:
-            data_filtered = data_filtered[data_filtered["Status"].isin(selected_status)]
-    else:
-        st.warning("Kolom 'Status' tidak ditemukan di data Anda. Filter status dinonaktifkan.")
-
+        status_list = ["Semua Status"] + sorted(data_filtered["Status"].unique().tolist())
+        sel_status = st.multiselect("📊 Status:", status_list, default="Semua Status")
+        if "Semua Status" not in sel_status and sel_status:
+            data_filtered = data_filtered[data_filtered["Status"].isin(sel_status)]
 
     st.markdown("---")
-    st.markdown("© 2026")
+    
+    # Tombol Print
+    if st.sidebar.button("🖨️ Cetak Laporan ke PDF"):
+        # Javascript sakti untuk nyetak seluruh halaman, bukan cuma frame tombol
+        js = "window.print();"
+        st.components.v1.html(f"<script>{js}</script>", height=0, width=0)
+        st.sidebar.success("Gunakan setelan 'Save as PDF' pada jendela print.")
+    
+    st.caption("© 2026 Keasistenan Utama IV")
 
-# --- MAIN CONTENT ---
-st.title("⚖️ Dashboard Monitoring Keasistenan Utama IV")
-st.subheader("Analisis Pengaduan Bidang Pertanahan")
-st.markdown("Selamat datang di dashboard interaktif untuk memantau tren dan kinerja penanganan laporan maladministrasi pertanahan di Ombudsman RI.")
-st.markdown("---")
+# --- 5. MAIN CONTENT ---
 
-# 4. METRICS (KPIs) - Menggunakan kolom yang lebih dinamis dan delta
+# Header Hero Section
+st.markdown("""
+<div class="header-container">
+    <h1 class="header-title">⚖️ Dashboard Monitoring Keasistenan Utama IV</h1>
+    <p class="header-subtitle">Monitoring & Analisis Pengaduan Masyarakat Bidang Pertanahan</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Tampilkan Indikator Filter Aktif
+filter_info = []
+if start_date and end_date: filter_info.append(f"Periode: <b>{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}</b>")
+if search_query: filter_info.append(f"Kata Kunci: <b>'{search_query}'</b>")
+if filter_info:
+    st.markdown(f"<div style='background-color:#e3f2fd; padding:10px; border-radius:8px; margin-bottom:20px; color:#0d47a1;'>ℹ️ Filter Aktif: {' | '.join(filter_info)}</div>", unsafe_allow_html=True)
+
+# --- SECTION 1: KPI METRICS ---
 if not data_filtered.empty:
-    total_laporan = len(data_filtered)
+    total = len(data_filtered)
+    selesai = len(data_filtered[data_filtered['Status'].str.contains('Selesai|Tutup', case=False, na=False)]) if 'Status' in data_filtered.columns else 0
+    proses = total - selesai
+    malad = data_filtered['Maladministrasi'].nunique() if 'Maladministrasi' in data_filtered.columns else 0
     
-    # Pastikan nama kolom 'Status' ada di data Anda
-    if 'Status' in data_filtered.columns:
-        selesai_count = len(data_filtered[data_filtered['Status'].str.contains('Selesai|Tutup', case=False, na=False)])
-        proses_count = len(data_filtered[~data_filtered['Status'].str.contains('Selesai|Tutup', case=False, na=False)])
-    else:
-        selesai_count = 0
-        proses_count = total_laporan # Anggap semua dalam proses jika status tidak ada
-
-    # Pastikan nama kolom 'Maladministrasi' ada di data Anda
-    if 'Maladministrasi' in data_filtered.columns:
-        kategori_unik = data_filtered['Maladministrasi'].nunique()
-    else:
-        kategori_unik = 0
-
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Laporan", f"{total_laporan} Kasus", delta="Data Terbaru")
-    col2.metric("Laporan Selesai", selesai_count, delta=f"{(selesai_count/total_laporan*100):.1f}%")
-    col3.metric("Dalam Proses", proses_count)
-    col4.metric("Kategori Maladministrasi Unik", kategori_unik)
-
-    st.markdown("---")
-
-    # 5. VISUALISASI UTAMA
-    chart_col1, chart_col2 = st.columns([6, 4])
-
-    with chart_col1:
-        st.markdown("### 📈 Tren Laporan per Instansi Terlapor")
-        # Pastikan nama kolom 'Terlapor' ada di data Anda
-        if 'Terlapor' in data_filtered.columns:
-            top_terlapor = data_filtered["Terlapor"].value_counts().nlargest(5).reset_index()
-            top_terlapor.columns = ["Instansi", "Jumlah"]
-            fig_terlapor = px.bar(
-                top_terlapor, x="Jumlah", y="Instansi", 
-                orientation='h', 
-                color_discrete_sequence=['#004a99'], # Warna biru Ombudsman
-                template="plotly_white",
-                title="Top 5 Instansi dengan Laporan Terbanyak"
-            )
-            fig_terlapor.update_layout(margin=dict(l=0, r=0, t=30, b=0), yaxis_title="") # Hapus label Y-axis
-            st.plotly_chart(fig_terlapor, use_container_width=True)
-        else:
-            st.warning("Grafik 'Tren Laporan per Instansi' tidak dapat ditampilkan. Kolom 'Terlapor' tidak ditemukan.")
-
-    with chart_col2:
-        st.markdown("### 📊 Distribusi Jenis Maladministrasi")
-        # Pastikan nama kolom 'Maladministrasi' ada di data Anda
-        if 'Maladministrasi' in data_filtered.columns:
-            fig_pie = px.pie(
-                data_filtered, names="Maladministrasi", 
-                hole=0.5,
-                color_discrete_sequence=px.colors.qualitative.Plotly, # Palette warna yang lebih cerah
-                title="Persentase Kategori Maladministrasi"
-            )
-            fig_pie.update_layout(margin=dict(l=0, r=0, t=30, b=0))
-            st.plotly_chart(fig_pie, use_container_width=True)
-        else:
-            st.warning("Grafik 'Distribusi Jenis Maladministrasi' tidak dapat ditampilkan. Kolom 'Maladministrasi' tidak ditemukan.")
+    col1, col2, col3, col4, col5= st.columns(5)
+    col1.metric("Total Laporan", f"{total}", delta="Kasus Masuk")
+    col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
+    col3.metric("Dalam Proses", f"{proses}", delta_color="inverse")
+    col4.metric("Varian Maladministrasi", f"{malad}")
+    col5.metric("🚨 Mangkrak (>30hr)", f"{total_mangkrak}", delta="Perlu Atensi", delta_color="inverse")
     
-    st.markdown("---")
 
-    # 6. TABEL DATA MENTAH & DOWNLOAD
-    st.markdown("### 📚 Detail Data Laporan (Tersaring)")
-    with st.expander("Klik untuk melihat tabel data lengkap"):
-        st.dataframe(data_filtered, use_container_width=True)
+    # --- FITUR BARU: GRAFIK TREN WAKTU (LINE CHART) ---
+    if has_date:
+        st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
+        st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
         
-        csv = data_filtered.to_csv(index=False).encode('utf-8')
+        # Agregasi data per Bulan
+        trend_data = data_filtered.set_index('Tanggal Laporan').resample('M').size().reset_index(name='Jumlah Laporan')
+        
+        if not trend_data.empty:
+            fig_trend = px.line(trend_data, x='Tanggal Laporan', y='Jumlah Laporan', 
+                                markers=True, line_shape='spline')
+            fig_trend.update_traces(line_color='#e65100', line_width=3)
+            fig_trend.update_layout(
+                plot_bgcolor='white',
+                height=300,
+                xaxis_title=None,
+                yaxis_title="Jumlah Kasus"
+            )
+            st.plotly_chart(fig_trend, use_container_width=True)
+        else:
+            st.info("Data tidak cukup untuk menampilkan tren bulanan.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- SECTION 2: MAP & NARRATIVE ---
+    with st.container():
+        c_map, c_sum = st.columns([7, 3])
+        with c_sum:
+            st.markdown('<div class="card-container card-orange"><h4>📝 Ringkasan Eksekutif (Otomatis)</h4>', unsafe_allow_html=True)
+            
+            # Memastikan data tidak kosong sebelum menghitung
+            if not data_filtered.empty:
+                top_inst = data_filtered['Terlapor'].mode()[0] if 'Terlapor' in data_filtered.columns else "-"
+                
+                # Gunakan variabel yang sudah kita hitung di bagian Metrics
+                rate = (selesai / total * 100) if total > 0 else 0
+                evaluasi = "Sangat Baik" if rate > 80 else "Cukup Baik" if rate > 50 else "Perlu Atensi"
+                color_eval = "#2e7d32" if rate > 80 else "#ef6c00" if rate > 50 else "#c62828"
+                
+                st.markdown(f"""
+                <div style="font-size: 0.95rem; line-height: 1.6;">
+                <b>Performa Penyelesaian:</b> <span style="color:{color_eval}; font-weight:bold; background-color:#f5f5f5; padding:2px 8px; border-radius:4px;">{evaluasi}</span><br><br>
+                Instansi paling sering dilaporkan pada periode ini adalah <b>{top_inst}</b>.<br><br>
+                Mohon prioritaskan penyelesaian pada <b>{proses}</b> laporan yang masih berjalan, terutama <b>{total_mangkrak}</b> kasus yang sudah lewat batas waktu (SLA).
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.write("Belum ada data untuk dianalisis.")
+                
+            st.markdown('</div>', unsafe_allow_html=True)
+        with c_map:
+            st.markdown('<div class="card-container card-blue"><h4>📍 Peta Distribusi Laporan</h4>', unsafe_allow_html=True)
+            if 'lat' in data_filtered.columns:
+                # Menggunakan Scatter Mapbox (Pin yang lebih cerdas)
+                fig_map = px.scatter_mapbox(
+                    data_filtered, 
+                    lat='lat', 
+                    lon='lon',
+                    color='Status', # Warna pin otomatis beda tiap status
+                    size_max=15, 
+                    zoom=3.5,
+                    hover_name='Terlapor', # Muncul nama instansi pas disentuh
+                    mapbox_style="carto-positron"
+                )
+                fig_map.update_layout(
+                    height=400, 
+                    margin={"r":0,"t":0,"l":0,"b":0},
+                    mapbox_style="carto-positron",
+                    dragmode="pan", 
+                    hovermode="closest"
+                )
+                # Tambahkan konfigurasi interaktif Streamlit
+                st.plotly_chart(fig_map, use_container_width=True, config={'scrollZoom': True})
+            else:
+                st.warning("Koordinat tidak tersedia.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- SECTION 3: CATEGORY CHARTS ---
+    st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
+    row_chart1, row_chart2 = st.columns([6, 4])
+    
+    with row_chart1:
+        st.subheader("📊 Instansi Terlapor")
+        if 'Terlapor' in data_filtered.columns:
+            top_chart = data_filtered['Terlapor'].value_counts().nlargest(10).reset_index()
+            top_chart.columns = ['Instansi', 'Jumlah']
+            
+            fig_bar = px.bar(top_chart, x='Jumlah', y='Instansi', orientation='h', text='Jumlah',
+                             color='Jumlah', color_continuous_scale=['#bbdefb', '#0d47a1'])
+            fig_bar.update_layout(
+                plot_bgcolor="white",
+                xaxis_title=None,
+                yaxis_title=None,
+                yaxis=dict(autorange="reversed"),
+                height=350,
+                coloraxis_showscale=False
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+    with row_chart2:
+        st.subheader("📊 Jenis Maladministrasi")
+        if 'Maladministrasi' in data_filtered.columns:
+            fig_pie = px.pie(data_filtered, names='Maladministrasi', hole=0.6,
+                             color_discrete_sequence=px.colors.sequential.Oranges_r)
+            fig_pie.update_layout(height=350, showlegend=False)
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_pie, use_container_width=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- SECTION 4: DATA TABLE ---
+    with st.expander("📚 Buka Detail Data Tabel", expanded=False):
+        st.markdown('<div class="card-container">', unsafe_allow_html=True)
+        view_df = data_filtered.drop(columns=['lat', 'lon'], errors='ignore')
+        st.dataframe(view_df, use_container_width=True)
+        
+        csv = view_df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="⬇️ Download Data sebagai CSV",
+            label="📥 Unduh Data (CSV)",
             data=csv,
-            file_name='rekap_laporan_pertanahan_filtered.csv',
+            file_name=f'Laporan_Ombudsman_{datetime.now().strftime("%Y%m%d")}.csv',
             mime='text/csv',
-            help="Unduh data yang sudah difilter dalam format CSV."
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
 else:
-    st.warning("Tidak ada data yang ditemukan berdasarkan filter yang diterapkan.")
+    st.warning("⚠️ Data tidak ditemukan. Silakan atur ulang kata kunci pencarian atau filter tanggal.")
