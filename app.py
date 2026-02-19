@@ -298,7 +298,7 @@ if not data_filtered.empty:
     col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
     col3.metric("Dalam Proses", f"{proses}", delta_color="inverse")
     col4.metric("Maladministrasi", f"{malad}")
-    col5.metric("🎯 Target", "10", delta="Tahunan") 
+    col5.metric("🎯 Target", "68", delta="Tahunan") 
 
     # --- GRAFIK TREN WAKTU & TARGET ---
     if has_date:
