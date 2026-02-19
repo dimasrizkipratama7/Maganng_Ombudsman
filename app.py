@@ -141,10 +141,15 @@ st.markdown("""
 # --- 3. FUNGSI LOGIKA ---
 
 def get_coordinates(df):
-    """Geocoding otomatis"""
+    """Geocoding otomatis - FIX: Gunakan Lokasi LM agar peta menyebar"""
     geolocator = Nominatim(user_agent="ombudsman_dashboard_final_v2")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
-    unique_locations = df['Terlapor'].unique()
+    
+    # Cek apakah ada kolom 'Lokasi LM', jika tidak pakai 'Terlapor'
+    loc_col = 'Lokasi LM' if 'Lokasi LM' in df.columns else 'Terlapor'
+    
+    # Dropna agar NaN tidak error
+    unique_locations = df[loc_col].dropna().unique()
     location_map = {}
     
     progress_bar = st.progress(0, text="Sedang memetakan lokasi...")
@@ -160,8 +165,8 @@ def get_coordinates(df):
         progress_bar.progress((i + 1) / len(unique_locations))
     
     progress_bar.empty()
-    df['lat'] = df['Terlapor'].map(lambda x: location_map[x][0])
-    df['lon'] = df['Terlapor'].map(lambda x: location_map[x][1])
+    df['lat'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[0])
+    df['lon'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[1])
     return df
 
 @st.cache_data
@@ -179,7 +184,7 @@ def load_data():
                 break
         
         # Auto-geocoding
-        if 'Terlapor' in df.columns and ('lat' not in df.columns):
+        if ('Terlapor' in df.columns or 'Lokasi LM' in df.columns) and ('lat' not in df.columns):
             df = get_coordinates(df)
             
         return df, date_col_found
@@ -188,7 +193,6 @@ def load_data():
         st.stop()
 
 data, has_date = load_data()
-# --- SISIPKAN DI SINI (Setelah load_data) ---
 if not data.empty and has_date:
     today = datetime.now()
     # Hitung laporan yang belum selesai dan sudah lebih dari 30 hari
@@ -201,11 +205,15 @@ else:
 
 # --- 4. SIDEBAR (FILTER & SEARCH) ---
 with st.sidebar:
-    st.image("ombudsman logo.png", width=160)
+    # Handle missing logo gracefully
+    try:
+        st.image("ombudsman logo.png", width=160)
+    except:
+        st.markdown("**(Logo Ombudsman)**")
     
     st.markdown("### 🔎 Pencarian & Filter")
     
-    # --- FITUR BARU: GLOBAL SEARCH ---
+    # --- FITUR LAMA TAPI DENGAN SEARCH LEBIH LUAS ---
     search_query = st.text_input("Cari Data (Nama/No/Wilayah):", placeholder="Ketik kata kunci...")
     
     st.divider()
@@ -239,16 +247,23 @@ with st.sidebar:
         mask = data_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
         data_filtered = data_filtered[mask]
 
+    # --- FITUR BARU: FILTER ASISTEN ---
+    if 'Asisten' in data.columns:
+        asisten_list = ["Semua Asisten"] + sorted(data_filtered["Asisten"].dropna().unique().tolist())
+        sel_asisten = st.selectbox("👤 Asisten:", asisten_list)
+        if sel_asisten != "Semua Asisten":
+            data_filtered = data_filtered[data_filtered["Asisten"] == sel_asisten]
+
     # Filter Kategori (Instansi)
     if 'Terlapor' in data.columns:
-        instansi_list = ["Semua Instansi"] + sorted(data_filtered["Terlapor"].unique().tolist())
+        instansi_list = ["Semua Instansi"] + sorted(data_filtered["Terlapor"].dropna().unique().tolist())
         sel_instansi = st.selectbox("📍 Instansi:", instansi_list)
         if sel_instansi != "Semua Instansi":
             data_filtered = data_filtered[data_filtered["Terlapor"] == sel_instansi]
             
     # Filter Status
     if 'Status' in data.columns:
-        status_list = ["Semua Status"] + sorted(data_filtered["Status"].unique().tolist())
+        status_list = ["Semua Status"] + sorted(data_filtered["Status"].dropna().unique().tolist())
         sel_status = st.multiselect("📊 Status:", status_list, default="Semua Status")
         if "Semua Status" not in sel_status and sel_status:
             data_filtered = data_filtered[data_filtered["Status"].isin(sel_status)]
@@ -257,7 +272,6 @@ with st.sidebar:
     
     # Tombol Print
     if st.sidebar.button("🖨️ Cetak Laporan ke PDF"):
-        # Javascript sakti untuk nyetak seluruh halaman, bukan cuma frame tombol
         js = "window.print();"
         st.components.v1.html(f"<script>{js}</script>", height=0, width=0)
         st.sidebar.success("Gunakan setelan 'Save as PDF' pada jendela print.")
@@ -288,36 +302,67 @@ if not data_filtered.empty:
     proses = total - selesai
     malad = data_filtered['Maladministrasi'].nunique() if 'Maladministrasi' in data_filtered.columns else 0
     
-    col1, col2, col3, col4, col5= st.columns(5)
+    # Tambahkan Target Metrik
+    col1, col2, col3, col4, col5, col6= st.columns(6)
     col1.metric("Total Laporan", f"{total}", delta="Kasus Masuk")
     col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
     col3.metric("Dalam Proses", f"{proses}", delta_color="inverse")
-    col4.metric("Varian Maladministrasi", f"{malad}")
-    col5.metric("🚨 Mangkrak (>30hr)", f"{total_mangkrak}", delta="Perlu Atensi", delta_color="inverse")
+    col4.metric("Maladministrasi", f"{malad}")
+    col5.metric("🚨 Mangkrak", f"{total_mangkrak}", delta=">30hr", delta_color="inverse")
+    col6.metric("🎯 Target", "10", delta="Tahunan") 
     
 
-    # --- FITUR BARU: GRAFIK TREN WAKTU (LINE CHART) ---
+    # --- FITUR LAMA: GRAFIK TREN WAKTU (LINE CHART) ---
     if has_date:
-        st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
-        st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
+        col_tren, col_target = st.columns(2)
         
-        # Agregasi data per Bulan
-        trend_data = data_filtered.set_index('Tanggal Laporan').resample('M').size().reset_index(name='Jumlah Laporan')
-        
-        if not trend_data.empty:
-            fig_trend = px.line(trend_data, x='Tanggal Laporan', y='Jumlah Laporan', 
-                                markers=True, line_shape='spline')
-            fig_trend.update_traces(line_color='#e65100', line_width=3)
-            fig_trend.update_layout(
-                plot_bgcolor='white',
-                height=300,
-                xaxis_title=None,
-                yaxis_title="Jumlah Kasus"
-            )
-            st.plotly_chart(fig_trend, use_container_width=True)
-        else:
-            st.info("Data tidak cukup untuk menampilkan tren bulanan.")
-        st.markdown('</div>', unsafe_allow_html=True)
+        with col_tren:
+            st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
+            st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
+            
+            # Agregasi data per Bulan
+            trend_data = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah Laporan')
+            
+            if not trend_data.empty:
+                fig_trend = px.line(trend_data, x='Tanggal Laporan', y='Jumlah Laporan', 
+                                    markers=True, line_shape='spline')
+                fig_trend.update_traces(line_color='#e65100', line_width=3)
+                fig_trend.update_layout(
+                    plot_bgcolor='white',
+                    height=300,
+                    xaxis_title=None,
+                    yaxis_title="Jumlah Kasus"
+                )
+                st.plotly_chart(fig_trend, use_container_width=True)
+            else:
+                st.info("Data tidak cukup untuk menampilkan tren bulanan.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # --- FITUR BARU: GRAFIK PENCAPAIAN TARGET ---
+        with col_target:
+            st.markdown('<div class="card-container card-orange">', unsafe_allow_html=True)
+            st.markdown("#### 📊 Presentasi Pencapaian Target")
+            
+            if 'Tahun' in data_filtered.columns:
+                target_df = data_filtered.groupby('Tahun').size().reset_index(name='Realisasi')
+                target_df['Target'] = 10 # Angka target default
+                fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
+                                    color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
+                fig_target.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
+                st.plotly_chart(fig_target, use_container_width=True)
+            else:
+                # Jika tidak ada kolom Tahun, fallback ke ekstraksi tahun dari tanggal
+                trend_data['Tahun'] = trend_data['Tanggal Laporan'].dt.year
+                target_df = trend_data.groupby('Tahun')['Jumlah Laporan'].sum().reset_index()
+                target_df.rename(columns={'Jumlah Laporan': 'Realisasi'}, inplace=True)
+                target_df['Target'] = 10
+                
+                fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
+                                    color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
+                fig_target.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
+                st.plotly_chart(fig_target, use_container_width=True)
+                
+            st.markdown('</div>', unsafe_allow_html=True)
 
     # --- SECTION 2: MAP & NARRATIVE ---
     with st.container():
@@ -356,7 +401,7 @@ if not data_filtered.empty:
                     color='Status', # Warna pin otomatis beda tiap status
                     size_max=15, 
                     zoom=3.5,
-                    hover_name='Terlapor', # Muncul nama instansi pas disentuh
+                    hover_name='Terlapor' if 'Terlapor' in data_filtered.columns else 'Lokasi LM', 
                     mapbox_style="carto-positron"
                 )
                 fig_map.update_layout(
@@ -405,11 +450,21 @@ if not data_filtered.empty:
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- SECTION 4: DATA TABLE ---
-    with st.expander("📚 Buka Detail Data Tabel", expanded=False):
+    # --- FITUR BARU & LAMA: DATA TABLE ---
+    # Membuka expander secara default agar mentor langsung melihat tabelnya
+    with st.expander("📚 Buka Detail Data Tabel", expanded=True):
         st.markdown('<div class="card-container">', unsafe_allow_html=True)
-        view_df = data_filtered.drop(columns=['lat', 'lon'], errors='ignore')
-        st.dataframe(view_df, use_container_width=True)
+        
+        # Fitur Baru: Tampilkan Kolom yang Diminta Mentor (No Arsip, Pelapor, Asisten)
+        view_df = data_filtered.drop(columns=['lat', 'lon', 'Hari_Berjalan'], errors='ignore')
+        
+        # Menyusun urutan kolom agar lebih enak dibaca (jika kolom tersebut ada di excel)
+        preferred_cols = ['Nomor Arsip', 'Nama Pelapor', 'Lokasi LM', 'Asisten', 'Terlapor', 'Status', 'Tanggal Laporan']
+        existing_cols = [c for c in preferred_cols if c in view_df.columns]
+        other_cols = [c for c in view_df.columns if c not in existing_cols]
+        final_cols = existing_cols + other_cols
+        
+        st.dataframe(view_df[final_cols], use_container_width=True)
         
         csv = view_df.to_csv(index=False).encode('utf-8')
         st.download_button(
