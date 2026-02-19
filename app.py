@@ -113,7 +113,6 @@ st.markdown("""
 
     /* Mode Cetak */
     @media print {
-        /* Sembunyikan semua elemen UI Streamlit yang ganggu */
         [data-testid="stSidebar"], 
         header, 
         footer, 
@@ -123,13 +122,11 @@ st.markdown("""
             display: none !important; 
         }
 
-        /* Hilangkan scrollbar dan set background putih bersih */
         .main, .stApp {
             background-color: white !important;
             color: black !important;
         }
 
-        /* Paksa grafik Plotly agar lebarnya pas di kertas */
         .js-plotly-plot {
             width: 100% !important;
         }
@@ -246,7 +243,7 @@ with st.sidebar:
         if sel_asisten != "Semua Asisten":
             data_filtered = data_filtered[data_filtered["Asisten"] == sel_asisten]
 
-    # Filter Wilayah (Pengganti Instansi)
+    # Filter Wilayah
     if 'Lokasi LM' in data.columns:
         wilayah_list = ["Semua Wilayah"] + sorted(data_filtered["Lokasi LM"].dropna().unique().tolist())
         sel_wilayah = st.selectbox("📍 Wilayah LM:", wilayah_list)
@@ -271,7 +268,6 @@ with st.sidebar:
 
 # --- 5. MAIN CONTENT ---
 
-# Header Hero Section
 st.markdown("""
 <div class="header-container">
     <h1 class="header-title">⚖️ Dashboard Monitoring Keasistenan Utama IV</h1>
@@ -279,7 +275,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Tampilkan Indikator Filter Aktif
 filter_info = []
 if start_date and end_date: filter_info.append(f"Periode: <b>{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}</b>")
 if search_query: filter_info.append(f"Kata Kunci: <b>'{search_query}'</b>")
@@ -291,52 +286,29 @@ if not data_filtered.empty:
     total = len(data_filtered)
     selesai = len(data_filtered[data_filtered['Status'].str.contains('Selesai|Tutup', case=False, na=False)]) if 'Status' in data_filtered.columns else 0
     proses = total - selesai
-    malad = data_filtered['Maladministrasi'].nunique() if 'Maladministrasi' in data_filtered.columns else 0
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    # Menghapus kotak Maladministrasi dan menyusun ulang urutan kotak KPI
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Laporan", f"{total}", delta="Kasus Masuk")
     col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
     col3.metric("Dalam Proses", f"{proses}", delta_color="inverse")
-    col4.metric("Maladministrasi", f"{malad}")
-    col5.metric("🎯 Target", "68", delta="Tahunan") 
+    col4.metric("🎯 Target", "10", delta="Tahunan") 
 
-    # --- GRAFIK TREN WAKTU & TARGET ---
+    # --- GRAFIK TREN WAKTU (FULL WIDTH) ---
     if has_date:
-        col_tren, col_target = st.columns(2)
+        st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
+        st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
+        trend_data = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah Laporan')
         
-        with col_tren:
-            st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
-            st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
-            trend_data = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah Laporan')
-            
-            if not trend_data.empty:
-                fig_trend = px.line(trend_data, x='Tanggal Laporan', y='Jumlah Laporan', 
-                                    markers=True, line_shape='spline')
-                fig_trend.update_traces(line_color='#e65100', line_width=3)
-                fig_trend.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
-                st.plotly_chart(fig_trend, use_container_width=True)
-            else:
-                st.info("Data tidak cukup untuk menampilkan tren bulanan.")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        with col_target:
-            st.markdown('<div class="card-container card-orange">', unsafe_allow_html=True)
-            st.markdown("#### 📊 Presentasi Pencapaian Target")
-            
-            if 'Tahun' in data_filtered.columns:
-                target_df = data_filtered.groupby('Tahun').size().reset_index(name='Realisasi')
-                target_df['Target'] = 10 
-            else:
-                trend_data['Tahun'] = trend_data['Tanggal Laporan'].dt.year
-                target_df = trend_data.groupby('Tahun')['Jumlah Laporan'].sum().reset_index()
-                target_df.rename(columns={'Jumlah Laporan': 'Realisasi'}, inplace=True)
-                target_df['Target'] = 10
-                
-            fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
-                                color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
-            fig_target.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
-            st.plotly_chart(fig_target, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        if not trend_data.empty:
+            fig_trend = px.line(trend_data, x='Tanggal Laporan', y='Jumlah Laporan', 
+                                markers=True, line_shape='spline')
+            fig_trend.update_traces(line_color='#e65100', line_width=3)
+            fig_trend.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
+            st.plotly_chart(fig_trend, use_container_width=True)
+        else:
+            st.info("Data tidak cukup untuk menampilkan tren bulanan.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # --- SECTION 2: MAP & NARRATIVE ---
     with st.container():
@@ -383,7 +355,7 @@ if not data_filtered.empty:
                 st.warning("Koordinat tidak tersedia.")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- SECTION 3: CATEGORY CHARTS ---
+    # --- SECTION 3: CATEGORY CHARTS (WILAYAH & TARGET TAHUNAN) ---
     st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
     row_chart1, row_chart2 = st.columns([6, 4])
     
@@ -406,15 +378,31 @@ if not data_filtered.empty:
             st.plotly_chart(fig_bar, use_container_width=True)
 
     with row_chart2:
-        st.subheader("📊 Jenis Maladministrasi")
-        if 'Maladministrasi' in data_filtered.columns:
-            fig_pie = px.pie(data_filtered, names='Maladministrasi', hole=0.6,
-                             color_discrete_sequence=px.colors.sequential.Oranges_r)
-            fig_pie.update_layout(height=350, showlegend=False)
-            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-            st.plotly_chart(fig_pie, use_container_width=True)
+        # Menggantikan Pie Chart Maladministrasi dengan Grafik Target
+        st.subheader("📊 Presentasi Pencapaian Target")
+        if has_date:
+            temp_df = data_filtered.copy()
+            if 'Tahun' not in temp_df.columns:
+                temp_df['Tahun'] = temp_df['Tanggal Laporan'].dt.year
+                
+            target_df = temp_df.groupby('Tahun').size().reset_index(name='Realisasi')
+            target_df['Target'] = 10 
+            target_df['Tahun'] = target_df['Tahun'].astype(str) # Agar tahun tidak pakai koma
+            
+            fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
+                                color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
+            fig_target.update_layout(
+                plot_bgcolor='white', 
+                height=350, 
+                xaxis_title=None, 
+                yaxis_title="Jumlah Kasus",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                legend_title_text=None
+            )
+            st.plotly_chart(fig_target, use_container_width=True)
         else:
-            st.info("Data Maladministrasi tidak tersedia.")
+            st.info("Data Tanggal tidak tersedia untuk memuat Grafik Target.")
+            
     st.markdown('</div>', unsafe_allow_html=True)
 
     # --- DATA TABLE ---
