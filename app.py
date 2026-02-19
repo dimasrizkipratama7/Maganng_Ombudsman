@@ -195,12 +195,12 @@ def load_data():
 data, has_date = load_data()
 if not data.empty and has_date:
     today = datetime.now()
-    # Hitung laporan yang belum selesai dan sudah lebih dari 30 hari
-    data['Hari_Berjalan'] = (today - data['Tanggal Laporan']).dt.days
-    mangkrak_mask = (data['Hari_Berjalan'] > 30) & (~data['Status'].str.contains('Selesai|Tutup', case=False, na=False))
-    total_mangkrak = len(data[mangkrak_mask])
-else:
-    total_mangkrak = 0
+# Filter Wilayah (Pengganti Instansi)
+    if 'Lokasi LM' in data.columns:
+        wilayah_list = ["Semua Wilayah"] + sorted(data_filtered["Lokasi LM"].dropna().unique().tolist())
+        sel_wilayah = st.selectbox("📍 Wilayah LM:", wilayah_list)
+        if sel_wilayah != "Semua Wilayah":
+            data_filtered = data_filtered[data_filtered["Lokasi LM"] == sel_wilayah]
 
 
 # --- 4. SIDEBAR (FILTER & SEARCH) ---
@@ -294,7 +294,22 @@ if start_date and end_date: filter_info.append(f"Periode: <b>{start_date.strftim
 if search_query: filter_info.append(f"Kata Kunci: <b>'{search_query}'</b>")
 if filter_info:
     st.markdown(f"<div style='background-color:#e3f2fd; padding:10px; border-radius:8px; margin-bottom:20px; color:#0d47a1;'>ℹ️ Filter Aktif: {' | '.join(filter_info)}</div>", unsafe_allow_html=True)
-
+# Memastikan data tidak kosong sebelum menghitung
+if not data_filtered.empty:
+# Ganti Terlapor menjadi Lokasi LM
+    top_wilayah = data_filtered['Lokasi LM'].mode()[0] if 'Lokasi LM' in data_filtered.columns else "-"
+                
+    rate = (selesai / total * 100) if total > 0 else 0
+    evaluasi = "Sangat Baik" if rate > 80 else "Cukup Baik" if rate > 50 else "Perlu Atensi"
+    color_eval = "#2e7d32" if rate > 80 else "#ef6c00" if rate > 50 else "#c62828"
+                
+    st.markdown(f"""
+                <div style="font-size: 0.95rem; line-height: 1.6;">
+                <b>Performa Penyelesaian:</b> <span style="color:{color_eval}; font-weight:bold; background-color:#f5f5f5; padding:2px 8px; border-radius:4px;">{evaluasi}</span><br><br>
+                Wilayah/Lokasi yang paling banyak dilaporkan pada periode ini adalah <b>{top_wilayah}</b>.<br><br>
+                Mohon prioritaskan penyelesaian pada <b>{proses}</b> laporan yang masih berjalan, terutama <b>{total_mangkrak}</b> kasus yang sudah lewat batas waktu (SLA).
+                </div>
+                """, unsafe_allow_html=True)
 # --- SECTION 1: KPI METRICS ---
 if not data_filtered.empty:
     total = len(data_filtered)
@@ -318,7 +333,23 @@ if not data_filtered.empty:
         with col_tren:
             st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
             st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
+    with row_chart1:
+        st.subheader("📊 Wilayah Laporan Terbanyak")
+        if 'Lokasi LM' in data_filtered.columns:
+            top_chart = data_filtered['Lokasi LM'].value_counts().nlargest(10).reset_index()
+            top_chart.columns = ['Wilayah', 'Jumlah']
             
+            fig_bar = px.bar(top_chart, x='Jumlah', y='Wilayah', orientation='h', text='Jumlah',
+                             color='Jumlah', color_continuous_scale=['#bbdefb', '#0d47a1'])
+            fig_bar.update_layout(
+                plot_bgcolor="white",
+                xaxis_title=None,
+                yaxis_title=None,
+                yaxis=dict(autorange="reversed"),
+                height=350,
+                coloraxis_showscale=False
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)       
             # Agregasi data per Bulan
             trend_data = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah Laporan')
             
