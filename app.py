@@ -140,39 +140,36 @@ st.markdown("""
 # --- 3. FUNGSI LOGIKA ---
 
 def get_coordinates(df):
-    """Geocoding otomatis berdasarkan Wilayah (Lokasi LM)"""
+    """Geocoding otomatis - Gunakan Lokasi LM agar peta menyebar"""
     geolocator = Nominatim(user_agent="ombudsman_dashboard_final_v2")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
     
-    # Fokus gunakan 'Lokasi LM'
-    loc_col = 'Lokasi LM' if 'Lokasi LM' in df.columns else None
+    loc_col = 'Lokasi LM' if 'Lokasi LM' in df.columns else 'Terlapor'
     
-    if loc_col:
-        # Dropna agar NaN tidak error
-        unique_locations = df[loc_col].dropna().unique()
-        location_map = {}
-        
-        progress_bar = st.progress(0, text="Sedang memetakan lokasi...")
-        for i, loc in enumerate(unique_locations):
-            try:
-                location = geocode(f"{loc}, Indonesia")
-                if location:
-                    location_map[loc] = [location.latitude, location.longitude]
-                else:
-                    location_map[loc] = [-6.2088, 106.8456] # Default Jakarta
-            except:
-                location_map[loc] = [-6.2088, 106.8456]
-            progress_bar.progress((i + 1) / len(unique_locations))
-        
-        progress_bar.empty()
-        df['lat'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[0])
-        df['lon'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[1])
+    unique_locations = df[loc_col].dropna().unique()
+    location_map = {}
+    
+    progress_bar = st.progress(0, text="Sedang memetakan lokasi...")
+    for i, loc in enumerate(unique_locations):
+        try:
+            location = geocode(f"{loc}, Indonesia")
+            if location:
+                location_map[loc] = [location.latitude, location.longitude]
+            else:
+                location_map[loc] = [-6.2088, 106.8456] # Default Jakarta
+        except:
+            location_map[loc] = [-6.2088, 106.8456]
+        progress_bar.progress((i + 1) / len(unique_locations))
+    
+    progress_bar.empty()
+    df['lat'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[0])
+    df['lon'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[1])
     return df
 
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_excel("data_tanah.xlsx")
+        df = pd.read_excel("data_tanah1.xlsx")
         
         # Auto-detect tanggal
         date_col_found = False
@@ -183,39 +180,35 @@ def load_data():
                 date_col_found = True
                 break
         
-        # Auto-geocoding menggunakan Lokasi LM
-        if 'Lokasi LM' in df.columns and ('lat' not in df.columns):
+        # Auto-geocoding
+        if ('Terlapor' in df.columns or 'Lokasi LM' in df.columns) and ('lat' not in df.columns):
             df = get_coordinates(df)
             
         return df, date_col_found
     except Exception as e:
-        st.error(f"Gagal memuat data: Pastikan file 'data_tanah.xlsx' tersedia dan tidak rusak. Error detail: {e}")
+        st.error(f"Gagal memuat data: {e}")
         st.stop()
 
 data, has_date = load_data()
+
+# Hitung Total Mangkrak Global di Awal
 if not data.empty and has_date:
     today = datetime.now()
-    # Hitung laporan yang belum selesai dan sudah lebih dari 30 hari
     data['Hari_Berjalan'] = (today - data['Tanggal Laporan']).dt.days
     mangkrak_mask = (data['Hari_Berjalan'] > 30) & (~data['Status'].str.contains('Selesai|Tutup', case=False, na=False))
     total_mangkrak = len(data[mangkrak_mask])
 else:
     total_mangkrak = 0
 
-
 # --- 4. SIDEBAR (FILTER & SEARCH) ---
 with st.sidebar:
-    # Handle missing logo gracefully
     try:
         st.image("ombudsman logo.png", width=160)
     except:
         st.markdown("**(Logo Ombudsman)**")
     
     st.markdown("### 🔎 Pencarian & Filter")
-    
-    # Global Search
     search_query = st.text_input("Cari Data (Nama/No/Wilayah):", placeholder="Ketik kata kunci...")
-    
     st.divider()
 
     start_date, end_date = None, None
@@ -232,7 +225,6 @@ with st.sidebar:
             max_value=max_date
         )
         
-        # Terapkan Filter Tanggal
         if isinstance(date_range, list) and len(date_range) == 2:
             start_date, end_date = date_range
             data_filtered = data[(data['Tanggal Laporan'].dt.date >= start_date) & 
@@ -242,7 +234,7 @@ with st.sidebar:
     else:
         data_filtered = data
 
-    # Terapkan Global Search (Logika AND dengan filter tanggal)
+    # Terapkan Global Search
     if search_query:
         mask = data_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
         data_filtered = data_filtered[mask]
@@ -270,7 +262,6 @@ with st.sidebar:
 
     st.markdown("---")
     
-    # Tombol Print
     if st.sidebar.button("🖨️ Cetak Laporan ke PDF"):
         js = "window.print();"
         st.components.v1.html(f"<script>{js}</script>", height=0, width=0)
@@ -302,15 +293,12 @@ if not data_filtered.empty:
     proses = total - selesai
     malad = data_filtered['Maladministrasi'].nunique() if 'Maladministrasi' in data_filtered.columns else 0
     
-    # Target Metrik
-    col1, col2, col3, col4, col5, col6= st.columns(6)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total Laporan", f"{total}", delta="Kasus Masuk")
     col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
     col3.metric("Dalam Proses", f"{proses}", delta_color="inverse")
     col4.metric("Maladministrasi", f"{malad}")
-    col5.metric("🚨 Mangkrak", f"{total_mangkrak}", delta=">30hr", delta_color="inverse")
-    col6.metric("🎯 Target", "10", delta="Tahunan") 
-    
+    col5.metric("🎯 Target", "10", delta="Tahunan") 
 
     # --- GRAFIK TREN WAKTU & TARGET ---
     if has_date:
@@ -319,20 +307,13 @@ if not data_filtered.empty:
         with col_tren:
             st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
             st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
-            
-            # Agregasi data per Bulan
             trend_data = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah Laporan')
             
             if not trend_data.empty:
                 fig_trend = px.line(trend_data, x='Tanggal Laporan', y='Jumlah Laporan', 
                                     markers=True, line_shape='spline')
                 fig_trend.update_traces(line_color='#e65100', line_width=3)
-                fig_trend.update_layout(
-                    plot_bgcolor='white',
-                    height=300,
-                    xaxis_title=None,
-                    yaxis_title="Jumlah Kasus"
-                )
+                fig_trend.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
                 st.plotly_chart(fig_trend, use_container_width=True)
             else:
                 st.info("Data tidak cukup untuk menampilkan tren bulanan.")
@@ -344,22 +325,17 @@ if not data_filtered.empty:
             
             if 'Tahun' in data_filtered.columns:
                 target_df = data_filtered.groupby('Tahun').size().reset_index(name='Realisasi')
-                target_df['Target'] = 10 # Angka target default
-                fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
-                                    color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
-                fig_target.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
-                st.plotly_chart(fig_target, use_container_width=True)
+                target_df['Target'] = 10 
             else:
                 trend_data['Tahun'] = trend_data['Tanggal Laporan'].dt.year
                 target_df = trend_data.groupby('Tahun')['Jumlah Laporan'].sum().reset_index()
                 target_df.rename(columns={'Jumlah Laporan': 'Realisasi'}, inplace=True)
                 target_df['Target'] = 10
                 
-                fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
-                                    color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
-                fig_target.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
-                st.plotly_chart(fig_target, use_container_width=True)
-                
+            fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
+                                color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
+            fig_target.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
+            st.plotly_chart(fig_target, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
     # --- SECTION 2: MAP & NARRATIVE ---
@@ -368,25 +344,20 @@ if not data_filtered.empty:
         with c_sum:
             st.markdown('<div class="card-container card-orange"><h4>📝 Ringkasan Eksekutif (Otomatis)</h4>', unsafe_allow_html=True)
             
-            if not data_filtered.empty:
-                # Menggunakan Lokasi LM untuk Ringkasan
-                top_wilayah = data_filtered['Lokasi LM'].mode()[0] if 'Lokasi LM' in data_filtered.columns else "-"
-                
-                rate = (selesai / total * 100) if total > 0 else 0
-                evaluasi = "Sangat Baik" if rate > 80 else "Cukup Baik" if rate > 50 else "Perlu Atensi"
-                color_eval = "#2e7d32" if rate > 80 else "#ef6c00" if rate > 50 else "#c62828"
-                
-                st.markdown(f"""
-                <div style="font-size: 0.95rem; line-height: 1.6;">
-                <b>Performa Penyelesaian:</b> <span style="color:{color_eval}; font-weight:bold; background-color:#f5f5f5; padding:2px 8px; border-radius:4px;">{evaluasi}</span><br><br>
-                Wilayah/Lokasi yang paling banyak dilaporkan pada periode ini adalah <b>{top_wilayah}</b>.<br><br>
-                Mohon prioritaskan penyelesaian pada <b>{proses}</b> laporan yang masih berjalan, terutama <b>{total_mangkrak}</b> kasus yang sudah lewat batas waktu (SLA).
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.write("Belum ada data untuk dianalisis.")
-                
+            top_wilayah = data_filtered['Lokasi LM'].mode()[0] if 'Lokasi LM' in data_filtered.columns else "-"
+            rate = (selesai / total * 100) if total > 0 else 0
+            evaluasi = "Sangat Baik" if rate > 80 else "Cukup Baik" if rate > 50 else "Perlu Atensi"
+            color_eval = "#2e7d32" if rate > 80 else "#ef6c00" if rate > 50 else "#c62828"
+            
+            st.markdown(f"""
+            <div style="font-size: 0.95rem; line-height: 1.6;">
+            <b>Performa Penyelesaian:</b> <span style="color:{color_eval}; font-weight:bold; background-color:#f5f5f5; padding:2px 8px; border-radius:4px;">{evaluasi}</span><br><br>
+            Wilayah/Lokasi yang paling banyak dilaporkan pada periode ini adalah <b>{top_wilayah}</b>.<br><br>
+            Mohon prioritaskan penyelesaian pada <b>{proses}</b> laporan yang masih berjalan, terutama <b>{total_mangkrak}</b> kasus yang sudah lewat batas waktu (SLA).
+            </div>
+            """, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+            
         with c_map:
             st.markdown('<div class="card-container card-blue"><h4>📍 Peta Distribusi Laporan</h4>', unsafe_allow_html=True)
             if 'lat' in data_filtered.columns:
@@ -417,7 +388,6 @@ if not data_filtered.empty:
     row_chart1, row_chart2 = st.columns([6, 4])
     
     with row_chart1:
-        # Mengubah grafik menjadi Wilayah Laporan Terbanyak
         st.subheader("📊 Wilayah Laporan Terbanyak")
         if 'Lokasi LM' in data_filtered.columns:
             top_chart = data_filtered['Lokasi LM'].value_counts().nlargest(10).reset_index()
@@ -434,8 +404,6 @@ if not data_filtered.empty:
                 coloraxis_showscale=False
             )
             st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.info("Kolom 'Lokasi LM' tidak ditemukan dalam data.")
 
     with row_chart2:
         st.subheader("📊 Jenis Maladministrasi")
@@ -446,17 +414,14 @@ if not data_filtered.empty:
             fig_pie.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.info("Data maladministrasi tidak tersedia.")
-    
+            st.info("Data Maladministrasi tidak tersedia.")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # --- DATA TABLE ---
     with st.expander("📚 Buka Detail Data Tabel", expanded=True):
         st.markdown('<div class="card-container">', unsafe_allow_html=True)
-        
         view_df = data_filtered.drop(columns=['lat', 'lon', 'Hari_Berjalan'], errors='ignore')
         
-        # Urutan kolom
         preferred_cols = ['Nomor Arsip', 'Nama Pelapor', 'Lokasi LM', 'Asisten', 'Status', 'Tanggal Laporan']
         existing_cols = [c for c in preferred_cols if c in view_df.columns]
         other_cols = [c for c in view_df.columns if c not in existing_cols]
