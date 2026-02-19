@@ -172,7 +172,7 @@ def get_coordinates(df):
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_excel("data_tanah.xlsx")
+        df = pd.read_excel("data_tanah1.xlsx")
         
         # Auto-detect tanggal
         date_col_found = False
