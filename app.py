@@ -303,13 +303,12 @@ if not data_filtered.empty:
     malad = data_filtered['Maladministrasi'].nunique() if 'Maladministrasi' in data_filtered.columns else 0
     
     # Tambahkan Target Metrik
-    col1, col2, col3, col4, col5, col6= st.columns(6)
+    col1, col2, col3, col4, col5= st.columns(6)
     col1.metric("Total Laporan", f"{total}", delta="Kasus Masuk")
     col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
     col3.metric("Dalam Proses", f"{proses}", delta_color="inverse")
     col4.metric("Maladministrasi", f"{malad}")
-    col5.metric("🚨 Mangkrak", f"{total_mangkrak}", delta=">30hr", delta_color="inverse")
-    col6.metric("🎯 Target", "10", delta="Tahunan") 
+    col5.metric("🎯 Target", "10", delta="Tahunan") 
     
 
     # --- FITUR LAMA: GRAFIK TREN WAKTU (LINE CHART) ---
