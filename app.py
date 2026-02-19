@@ -287,7 +287,6 @@ if not data_filtered.empty:
     selesai = len(data_filtered[data_filtered['Status'].str.contains('Selesai|Tutup', case=False, na=False)]) if 'Status' in data_filtered.columns else 0
     proses = total - selesai
     
-    # Menghapus kotak Maladministrasi dan menyusun ulang urutan kotak KPI
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Laporan", f"{total}", delta="Kasus Masuk")
     col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
@@ -295,8 +294,8 @@ if not data_filtered.empty:
     col4.metric("🎯 Target", "10", delta="Tahunan") 
 
     # --- GRAFIK TREN WAKTU (FULL WIDTH) ---
+    st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
     if has_date:
-        st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
         st.markdown("#### 📉 Tren Laporan Masuk (Bulanan)")
         trend_data = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah Laporan')
         
@@ -308,7 +307,18 @@ if not data_filtered.empty:
             st.plotly_chart(fig_trend, use_container_width=True)
         else:
             st.info("Data tidak cukup untuk menampilkan tren bulanan.")
-        st.markdown('</div>', unsafe_allow_html=True)
+    elif 'Tahun' in data_filtered.columns:
+        st.markdown("#### 📉 Tren Laporan Masuk (Tahunan)")
+        trend_data = data_filtered.groupby('Tahun').size().reset_index(name='Jumlah Laporan')
+        if not trend_data.empty:
+            fig_trend = px.line(trend_data, x='Tahun', y='Jumlah Laporan', markers=True)
+            fig_trend.update_xaxes(type='category') # Paksa tahun jadi kategori (tanpa desimal)
+            fig_trend.update_traces(line_color='#e65100', line_width=3)
+            fig_trend.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
+            st.plotly_chart(fig_trend, use_container_width=True)
+    else:
+        st.info("Data Tanggal atau Tahun tidak tersedia untuk memuat tren.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # --- SECTION 2: MAP & NARRATIVE ---
     with st.container():
@@ -378,9 +388,9 @@ if not data_filtered.empty:
             st.plotly_chart(fig_bar, use_container_width=True)
 
     with row_chart2:
-        # Menggantikan Pie Chart Maladministrasi dengan Grafik Target
         st.subheader("📊 Presentasi Pencapaian Target")
-        if has_date:
+        # --- FIX: Cek berdasarkan 'Tahun' ATAU 'Tanggal' ---
+        if 'Tahun' in data_filtered.columns or has_date:
             temp_df = data_filtered.copy()
             if 'Tahun' not in temp_df.columns:
                 temp_df['Tahun'] = temp_df['Tanggal Laporan'].dt.year
@@ -401,16 +411,19 @@ if not data_filtered.empty:
             )
             st.plotly_chart(fig_target, use_container_width=True)
         else:
-            st.info("Data Tanggal tidak tersedia untuk memuat Grafik Target.")
+            st.info("Pastikan ada kolom 'Tahun' di Excel untuk memuat Grafik Target.")
             
     st.markdown('</div>', unsafe_allow_html=True)
 
     # --- DATA TABLE ---
     with st.expander("📚 Buka Detail Data Tabel", expanded=True):
         st.markdown('<div class="card-container">', unsafe_allow_html=True)
-        view_df = data_filtered.drop(columns=['lat', 'lon', 'Hari_Berjalan'], errors='ignore')
         
-        preferred_cols = ['Nomor Arsip', 'Nama Pelapor', 'Lokasi LM', 'Asisten', 'Status', 'Tanggal Laporan']
+        # --- FIX: Daftar kolom yang diwajibkan untuk dihapus ---
+        kolom_dihapus = ['lat', 'lon', 'Hari_Berjalan', 'ni', 'Ni', 'NI', 'maladministrasi', 'Maladministrasi', 'Jenis Maladministrasi']
+        view_df = data_filtered.drop(columns=kolom_dihapus, errors='ignore')
+        
+        preferred_cols = ['Nomor Arsip', 'Nama Pelapor', 'Lokasi LM', 'Asisten', 'Status', 'Tanggal Laporan', 'Tahun']
         existing_cols = [c for c in preferred_cols if c in view_df.columns]
         other_cols = [c for c in view_df.columns if c not in existing_cols]
         final_cols = existing_cols + other_cols
