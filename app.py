@@ -112,7 +112,9 @@ st.markdown("""
     }
 
     /* Mode Cetak */
+    /* Mode Cetak - Diperbaiki agar print semua halaman */
     @media print {
+        /* Sembunyikan elemen yang tidak perlu dicetak */
         [data-testid="stSidebar"], 
         header, 
         footer, 
@@ -122,11 +124,24 @@ st.markdown("""
             display: none !important; 
         }
 
-        .main, .stApp {
+        /* BUKA KUNCI SCROLL STREAMLIT AGAR BISA PRINT BANYAK HALAMAN */
+        html, body, .stApp, .main, [data-testid="stAppViewContainer"], [data-testid="stMainBlockContainer"] {
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
+            position: relative !important;
+            display: block !important;
             background-color: white !important;
             color: black !important;
         }
 
+        /* Pastikan kartu dan grafik tidak terpotong di tengah halaman (page break) */
+        .card-container, .js-plotly-plot, [data-testid="stMetric"] {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+
+        /* Sesuaikan lebar grafik */
         .js-plotly-plot {
             width: 100% !important;
         }
