@@ -8,7 +8,7 @@ from datetime import datetime
 import streamlit.components.v1 as components
 import time
 
-# --- 1. KONFIGURASI HALAMAN (HARUS PALING ATAS) ---
+# --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
     page_title="Sistem Keasistenan IV - Ombudsman RI",
     page_icon="⚖️",
@@ -16,117 +16,124 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. INISIALISASI SESSION STATE UNTUK LOGIN & DAFTAR ---
+# --- 2. INISIALISASI SESSION STATE UNTUK LOGIN ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-# Database akun sementara (bisa ditambah lewat menu Daftar)
 if 'users_db' not in st.session_state:
-    st.session_state['users_db'] = {
-        "admin": "ombudsman123",
-        "pimpinan": "rahasia123"
-    }
+    st.session_state['users_db'] = {"admin": "ombudsman123", "pimpinan": "rahasia123"}
 
-# --- 3. CUSTOM CSS GLOBAL ---
+# --- 3. CUSTOM CSS GLOBAL (TEMA DARK NEON MENYALA) ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
     
     html, body, [class*="css"]  {
         font-family: 'Inter', sans-serif;
     }
 
-    /* Background Utama Dashboard */
-    .stApp {
-        background-color: #f4f7f6;
+    /* Background Utama Gelap */
+    .stApp { 
+        background-color: #0d1117; 
+        color: #e6edf3;
+    }
+    
+    /* Sidebar Gelap */
+    [data-testid="stSidebar"] {
+        background-color: #161b22;
+        border-right: 1px solid #30363d;
     }
 
-    /* --- STYLING KHUSUS HALAMAN AUTENTIKASI --- */
+    /* --- STYLING AUTENTIKASI (GLASSMORPHISM & GLOW) --- */
     .auth-title {
-        text-align: center;
-        color: #003366;
-        font-weight: 800;
-        font-size: 2.2rem;
-        margin-bottom: 5px;
-        padding-top: 20px;
+        text-align: center; color: #38bdf8; font-weight: 800;
+        font-size: 2.5rem; margin-bottom: 5px; padding-top: 20px;
+        text-shadow: 0 0 15px rgba(56,189,248,0.5);
     }
     .auth-subtitle {
-        text-align: center;
-        color: #666;
-        font-size: 1rem;
-        margin-bottom: 30px;
+        text-align: center; color: #8b949e; font-size: 1rem; margin-bottom: 30px;
     }
-
-    /* Customisasi Tab Streamlit agar terlihat seperti tombol premium */
-    [data-testid="stTabs"] [data-baseweb="tab-list"] {
-        gap: 10px;
-        justify-content: center;
-    }
+    
+    /* Tab Menu Menyala */
+    [data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 10px; justify-content: center; }
     [data-testid="stTabs"] [data-baseweb="tab"] {
-        background-color: #e3edf7;
-        border-radius: 8px 8px 0px 0px;
-        padding: 10px 20px;
-        color: #003366;
-        font-weight: 600;
+        background-color: #21262d; border-radius: 8px 8px 0px 0px;
+        padding: 10px 20px; color: #8b949e; font-weight: 600;
+        border: 1px solid transparent;
     }
     [data-testid="stTabs"] [aria-selected="true"] {
-        background-color: #004a99;
-        color: white !important;
+        background-color: #161b22; color: #38bdf8 !important;
+        border-top: 2px solid #38bdf8; border-left: 1px solid #30363d; border-right: 1px solid #30363d;
+        box-shadow: 0 -4px 10px rgba(56,189,248,0.15);
     }
 
-    /* --- STYLING DASHBOARD --- */
+    /* --- STYLING DASHBOARD NEON --- */
     .header-container {
-        background: linear-gradient(135deg, #003366 0%, #004a99 100%);
-        padding: 2rem;
-        border-radius: 12px;
-        color: white;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 15px rgba(0,74,153,0.2);
+        background: linear-gradient(135deg, #111d2c 0%, #0d1117 100%);
+        padding: 2rem; border-radius: 12px; color: white;
+        margin-bottom: 2rem; 
+        border-left: 5px solid #38bdf8;
+        box-shadow: 0 0 25px rgba(56, 189, 248, 0.2);
     }
-    .header-title { font-size: 2.2rem; font-weight: 700; margin: 0; }
-    .header-subtitle { font-size: 1rem; opacity: 0.9; margin-top: 5px; }
+    .header-title { font-size: 2.2rem; font-weight: 800; margin: 0; color: #ffffff;}
+    .header-subtitle { font-size: 1rem; color: #8b949e; margin-top: 5px; }
 
+    /* Kartu (Card) dengan Bayangan Menyala */
     .card-container {
-        background-color: white;
-        padding: 25px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-        border-top: 4px solid transparent;
+        background-color: #161b22; padding: 25px; border-radius: 12px;
+        margin-bottom: 20px; border: 1px solid #30363d;
+        transition: all 0.3s ease;
     }
-    .card-blue { border-top-color: #004a99; }
-    .card-orange { border-top-color: #e65100; }
+    .card-container:hover { transform: translateY(-3px); }
+    
+    .card-blue { 
+        border-top: 4px solid #38bdf8; 
+        box-shadow: 0 5px 20px rgba(56,189,248,0.1); 
+    }
+    .card-blue h4 { color: #38bdf8; }
+    
+    .card-orange { 
+        border-top: 4px solid #f97316; 
+        box-shadow: 0 5px 20px rgba(249,115,22,0.1); 
+    }
+    .card-orange h4 { color: #f97316; }
 
+    /* Metrik (Angka) Menyala */
     [data-testid="stMetric"] {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        border: 1px solid #f0f0f0;
-        text-align: center;
+        background-color: #161b22; padding: 15px; border-radius: 10px;
+        border: 1px solid #30363d; border-bottom: 3px solid #38bdf8;
+        text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
     }
+    [data-testid="stMetricLabel"] { color: #8b949e; font-size: 0.9rem; font-weight: 600; }
+    [data-testid="stMetricValue"] { 
+        color: #e6edf3; font-weight: 800; font-size: 2.2rem; 
+        text-shadow: 0 0 10px rgba(255,255,255,0.2);
+    }
+    
+    /* Expander Table */
+    .streamlit-expanderHeader { background-color: #161b22 !important; color: white !important; }
 
-    /* --- MODE CETAK (PRINT) --- */
+    /* --- MODE CETAK (PRINT TERANG) --- */
     @media print {
         @page { size: A4 portrait; margin: 10mm; }
         [data-testid="stSidebar"], [data-testid="stHeader"], footer, [data-testid="stToolbar"] { display: none !important; }
         html, body, .stApp, .main, .block-container, [data-testid="stAppViewContainer"], [data-testid="stMainBlockContainer"] {
-            overflow: visible !important; height: auto !important; min-height: 0 !important; max-height: none !important;
-            position: relative !important; display: block !important; background-color: white !important; width: 100% !important;
+            overflow: visible !important; height: auto !important; position: relative !important; display: block !important; 
+            background-color: white !important; color: black !important; width: 100% !important;
         }
-        .card-container, [data-testid="stMetric"], .js-plotly-plot, .stDataFrame { page-break-inside: avoid !important; break-inside: avoid !important; }
+        .card-container, [data-testid="stMetric"] { 
+            background-color: white !important; border: 1px solid #ccc !important;
+            box-shadow: none !important; color: black !important; page-break-inside: avoid !important; 
+        }
+        .header-title, .card-blue h4, .card-orange h4, [data-testid="stMetricValue"] { color: black !important; text-shadow: none !important; }
         .js-plotly-plot .plotly { width: 100% !important; }
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # --- 4. FUNGSI HALAMAN LOGIN & DAFTAR ---
-
 def auth_page():
-    # Sembunyikan sidebar di halaman awal
     st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
-    
-    # Membuat kolom agar form berada tepat di tengah layar
     col1, col2, col3 = st.columns([1, 1.3, 1])
     
     with col2:
@@ -134,13 +141,11 @@ def auth_page():
         st.markdown("<h2 class='auth-title'>⚖️ Portal Keasistenan IV</h2>", unsafe_allow_html=True)
         st.markdown("<p class='auth-subtitle'>Sistem Monitoring Pengaduan Ombudsman RI</p>", unsafe_allow_html=True)
         
-        # Membuat kotak dengan container bawaan Streamlit agar rapi
         with st.container(border=True):
             tab1, tab2 = st.tabs(["🔑 Masuk (Login)", "📝 Daftar Baru"])
             
-            # --- TAB 1: LOGIN ---
             with tab1:
-                st.markdown("#### Silakan Masuk")
+                st.markdown("<h4 style='color: white;'>Silakan Masuk</h4>", unsafe_allow_html=True)
                 username_login = st.text_input("Username", key="log_user", placeholder="Masukkan username...")
                 password_login = st.text_input("Password", type="password", key="log_pass", placeholder="Masukkan password...")
                 
@@ -153,9 +158,8 @@ def auth_page():
                     else:
                         st.error("❌ Username atau password salah!")
 
-            # --- TAB 2: DAFTAR AKUN BARU ---
             with tab2:
-                st.markdown("#### Buat Akun Baru")
+                st.markdown("<h4 style='color: white;'>Buat Akun Baru</h4>", unsafe_allow_html=True)
                 new_username = st.text_input("Buat Username", key="reg_user", placeholder="Minimal 4 karakter")
                 new_password = st.text_input("Buat Password", type="password", key="reg_pass", placeholder="Minimal 4 karakter")
                 confirm_password = st.text_input("Konfirmasi Password", type="password", key="reg_pass_conf")
@@ -170,16 +174,14 @@ def auth_page():
                     elif new_password != confirm_password:
                         st.error("❌ Password dan Konfirmasi Password tidak sama!")
                     else:
-                        # Menyimpan akun baru ke database sementara
                         st.session_state['users_db'][new_username] = new_password
                         st.success("🎉 Akun berhasil dibuat! Silakan pindah ke tab 'Masuk (Login)'.")
-                        st.balloons() # Efek animasi balon!
+                        st.balloons()
 
 # --- 5. FUNGSI DASHBOARD UTAMA ---
-
 def show_dashboard():
     def get_coordinates(df):
-        geolocator = Nominatim(user_agent="ombudsman_dash_v4")
+        geolocator = Nominatim(user_agent="ombudsman_dash_v5")
         geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
         loc_col = 'Lokasi LM' if 'Lokasi LM' in df.columns else 'Terlapor'
         unique_locations = df[loc_col].dropna().unique()
@@ -228,10 +230,10 @@ def show_dashboard():
     # SIDEBAR
     with st.sidebar:
         try: st.image("ombudsman logo.png", width=160)
-        except: st.markdown("**(Logo Ombudsman)**")
+        except: st.markdown("<h2 style='color:white;'>⚖️ Ombudsman</h2>", unsafe_allow_html=True)
         
-        st.markdown("### 🔎 Filter Data")
-        search_query = st.text_input("Pencarian Cepat:", placeholder="Nama/No/Wilayah...")
+        st.markdown("### 🔎 Pencarian & Filter")
+        search_query = st.text_input("Cari Data:", placeholder="Nama/No/Wilayah...")
         st.divider()
 
         start_date, end_date = None, None
@@ -249,16 +251,19 @@ def show_dashboard():
             data_filtered = data_filtered[mask]
 
         if 'Asisten' in data.columns:
-            sel_asisten = st.selectbox("👤 Asisten:", ["Semua"] + sorted(data_filtered["Asisten"].dropna().unique().tolist()))
-            if sel_asisten != "Semua": data_filtered = data_filtered[data_filtered["Asisten"] == sel_asisten]
+            asisten_list = ["Semua Asisten"] + sorted(data_filtered["Asisten"].dropna().unique().tolist())
+            sel_asisten = st.selectbox("👤 Asisten:", asisten_list)
+            if sel_asisten != "Semua Asisten": data_filtered = data_filtered[data_filtered["Asisten"] == sel_asisten]
 
         if 'Lokasi LM' in data.columns:
-            sel_wilayah = st.selectbox("📍 Wilayah LM:", ["Semua"] + sorted(data_filtered["Lokasi LM"].dropna().unique().tolist()))
-            if sel_wilayah != "Semua": data_filtered = data_filtered[data_filtered["Lokasi LM"] == sel_wilayah]
+            wilayah_list = ["Semua Wilayah"] + sorted(data_filtered["Lokasi LM"].dropna().unique().tolist())
+            sel_wilayah = st.selectbox("📍 Wilayah LM:", wilayah_list)
+            if sel_wilayah != "Semua Wilayah": data_filtered = data_filtered[data_filtered["Lokasi LM"] == sel_wilayah]
                 
         if 'Status' in data.columns:
-            sel_status = st.multiselect("📊 Status:", ["Semua"] + sorted(data_filtered["Status"].dropna().unique().tolist()), default="Semua")
-            if "Semua" not in sel_status and sel_status: data_filtered = data_filtered[data_filtered["Status"].isin(sel_status)]
+            status_list = ["Semua Status"] + sorted(data_filtered["Status"].dropna().unique().tolist())
+            sel_status = st.multiselect("📊 Status:", status_list, default="Semua Status")
+            if "Semua Status" not in sel_status and sel_status: data_filtered = data_filtered[data_filtered["Status"].isin(sel_status)]
 
         st.markdown("---")
         if st.button("🖨️ Cetak PDF", type="primary", use_container_width=True):
@@ -270,13 +275,19 @@ def show_dashboard():
             
         st.caption("© 2026 Keasistenan Utama IV")
 
-    # MAIN CONTENT
+    # MAIN CONTENT DASHBOARD
     st.markdown("""
     <div class="header-container">
         <h1 class="header-title">⚖️ Dashboard Monitoring Keasistenan Utama IV</h1>
-        <p class="header-subtitle">Sistem Informasi Pengaduan Masyarakat Bidang Pertanahan</p>
+        <p class="header-subtitle">Monitoring & Analisis Pengaduan Masyarakat Bidang Pertanahan</p>
     </div>
     """, unsafe_allow_html=True)
+
+    filter_info = []
+    if start_date and end_date: filter_info.append(f"Periode: <b style='color:#38bdf8;'>{start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}</b>")
+    if search_query: filter_info.append(f"Kata Kunci: <b style='color:#38bdf8;'>'{search_query}'</b>")
+    if filter_info:
+        st.markdown(f"<div style='background-color:#21262d; border: 1px solid #30363d; padding:10px; border-radius:8px; margin-bottom:20px; color:#8b949e;'>ℹ️ Filter Aktif: {' | '.join(filter_info)}</div>", unsafe_allow_html=True)
 
     if not data_filtered.empty:
         total = len(data_filtered)
@@ -284,10 +295,10 @@ def show_dashboard():
         proses = total - selesai
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Laporan Masuk", f"{total}")
-        col2.metric("Laporan Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}%")
+        col1.metric("Total Laporan", f"{total}", delta="Kasus Masuk")
+        col2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.1f}% Rate")
         col3.metric("Dalam Proses", f"{proses}", delta_color="inverse")
-        col4.metric("Target Tahunan", "10") 
+        col4.metric("🎯 Target", "10", delta="Tahunan") 
 
         st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
         if has_date:
@@ -295,8 +306,16 @@ def show_dashboard():
             trend_data = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah Laporan')
             if not trend_data.empty:
                 fig_trend = px.line(trend_data, x='Tanggal Laporan', y='Jumlah Laporan', markers=True, line_shape='spline')
-                fig_trend.update_traces(line_color='#e65100', line_width=3)
-                fig_trend.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
+                fig_trend.update_traces(line_color='#38bdf8', line_width=3, marker=dict(size=8, color='#f97316'))
+                fig_trend.update_layout(template='plotly_dark', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
+                st.plotly_chart(fig_trend, use_container_width=True)
+        elif 'Tahun' in data_filtered.columns:
+            st.markdown("#### 📉 Tren Laporan Masuk (Tahunan)")
+            trend_data = data_filtered.groupby('Tahun').size().reset_index(name='Jumlah Laporan')
+            if not trend_data.empty:
+                fig_trend = px.line(trend_data, x='Tahun', y='Jumlah Laporan', markers=True)
+                fig_trend.update_traces(line_color='#38bdf8', line_width=3, marker=dict(size=8, color='#f97316'))
+                fig_trend.update_layout(template='plotly_dark', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
                 st.plotly_chart(fig_trend, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -307,36 +326,70 @@ def show_dashboard():
                 top_wilayah = data_filtered['Lokasi LM'].mode()[0] if 'Lokasi LM' in data_filtered.columns else "-"
                 rate = (selesai / total * 100) if total > 0 else 0
                 evaluasi = "Sangat Baik" if rate > 80 else "Cukup Baik" if rate > 50 else "Perlu Atensi"
-                color_eval = "#2e7d32" if rate > 80 else "#ef6c00" if rate > 50 else "#c62828"
+                color_eval = "#34d399" if rate > 80 else "#fbbf24" if rate > 50 else "#ef4444"
                 st.markdown(f"""
-                <div style="font-size: 0.95rem; line-height: 1.6;">
-                <b>Performa:</b> <span style="color:{color_eval}; font-weight:bold; background-color:#f5f5f5; padding:2px 8px; border-radius:4px;">{evaluasi}</span><br><br>
-                Wilayah terbanyak: <b>{top_wilayah}</b>.<br><br>
-                Prioritas: <b>{proses}</b> laporan berjalan, <b>{total_mangkrak}</b> kasus lewat batas SLA.
+                <div style="font-size: 0.95rem; line-height: 1.6; color: #e6edf3;">
+                <b>Performa:</b> <span style="color:{color_eval}; font-weight:bold; background-color:#21262d; padding:2px 8px; border-radius:4px; border: 1px solid {color_eval};">{evaluasi}</span><br><br>
+                Wilayah terbanyak: <b style="color:#f97316;">{top_wilayah}</b>.<br><br>
+                Prioritas: <b style="color:#38bdf8;">{proses}</b> laporan berjalan, <b style="color:#ef4444;">{total_mangkrak}</b> kasus lewat SLA.
                 </div>
                 """, unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
             with c_map:
-                st.markdown('<div class="card-container card-blue"><h4>📍 Peta Distribusi</h4>', unsafe_allow_html=True)
+                st.markdown('<div class="card-container card-blue"><h4>📍 Peta Distribusi (Dark Mode)</h4>', unsafe_allow_html=True)
                 if 'lat' in data_filtered.columns:
                     fig_map = px.scatter_mapbox(
                         data_filtered, lat='lat', lon='lon', color='Status', size_max=15, zoom=3.5,
-                        hover_name='Lokasi LM' if 'Lokasi LM' in data_filtered.columns else None, mapbox_style="carto-positron"
+                        hover_name='Lokasi LM' if 'Lokasi LM' in data_filtered.columns else None, 
+                        mapbox_style="carto-darkmatter" # Menggunakan peta mode gelap
                     )
-                    fig_map.update_layout(height=400, margin={"r":0,"t":0,"l":0,"b":0}, dragmode="pan")
+                    fig_map.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', height=400, margin={"r":0,"t":0,"l":0,"b":0}, dragmode="pan")
                     st.plotly_chart(fig_map, use_container_width=True, config={'scrollZoom': True})
                 st.markdown('</div>', unsafe_allow_html=True)
 
+        st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
+        row_chart1, row_chart2 = st.columns([6, 4])
+        
+        with row_chart1:
+            st.subheader("📊 Wilayah Laporan Terbanyak")
+            if 'Lokasi LM' in data_filtered.columns:
+                top_chart = data_filtered['Lokasi LM'].value_counts().nlargest(10).reset_index()
+                top_chart.columns = ['Wilayah', 'Jumlah']
+                fig_bar = px.bar(top_chart, x='Jumlah', y='Wilayah', orientation='h', text='Jumlah', color='Jumlah', color_continuous_scale=['#0369a1', '#38bdf8'])
+                fig_bar.update_layout(template='plotly_dark', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title=None, yaxis=dict(autorange="reversed"), height=350, coloraxis_showscale=False)
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+        with row_chart2:
+            st.subheader("📊 Pencapaian Target")
+            if 'Tahun' in data_filtered.columns or has_date:
+                temp_df = data_filtered.copy()
+                if 'Tahun' not in temp_df.columns:
+                    temp_df['Tahun'] = temp_df['Tanggal Laporan'].dt.year
+                target_df = temp_df.groupby('Tahun').size().reset_index(name='Realisasi')
+                target_df['Target'] = 10 
+                target_df['Tahun'] = target_df['Tahun'].astype(str)
+                fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group', color_discrete_map={'Realisasi': '#38bdf8', 'Target': '#f97316'})
+                fig_target.update_layout(template='plotly_dark', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', height=350, xaxis_title=None, yaxis_title="Jumlah Kasus", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(fig_target, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
         with st.expander("📚 Buka Detail Data Tabel", expanded=True):
+            st.markdown('<div class="card-container" style="border-top: none;">', unsafe_allow_html=True)
             kolom_dihapus = ['lat', 'lon', 'Hari_Berjalan', 'ni', 'Ni', 'NI', 'maladministrasi', 'Maladministrasi', 'Jenis Maladministrasi']
             view_df = data_filtered.drop(columns=kolom_dihapus, errors='ignore')
-            st.dataframe(view_df, use_container_width=True)
+            
+            preferred_cols = ['Nomor Arsip', 'Nama Pelapor', 'Lokasi LM', 'Asisten', 'Status', 'Tanggal Laporan', 'Tahun']
+            existing_cols = [c for c in preferred_cols if c in view_df.columns]
+            other_cols = [c for c in view_df.columns if c not in existing_cols]
+            
+            st.dataframe(view_df[existing_cols + other_cols], use_container_width=True)
+            
             csv = view_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Unduh CSV", data=csv, file_name=f'Laporan_{datetime.now().strftime("%Y%m%d")}.csv', mime='text/csv')
+            st.download_button("📥 Unduh Data (CSV)", data=csv, file_name=f'Laporan_Ombudsman_{datetime.now().strftime("%Y%m%d")}.csv', mime='text/csv')
+            st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.warning("⚠️ Data tidak ditemukan.")
-
+        st.warning("⚠️ Data tidak ditemukan. Silakan atur ulang kata kunci pencarian atau filter tanggal.")
 
 # --- 6. ROUTING UTAMA ---
 if not st.session_state['logged_in']:
