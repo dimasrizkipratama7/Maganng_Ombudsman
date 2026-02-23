@@ -1,11 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import numpy as np
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from datetime import datetime
-import streamlit.components.v1 as components
 import time
 
 # --- 1. KONFIGURASI HALAMAN ---
@@ -23,7 +21,7 @@ if 'logged_in' not in st.session_state:
 if 'users_db' not in st.session_state:
     st.session_state['users_db'] = {"admin": "ombudsman123", "pimpinan": "rahasia123"}
 
-# --- 3. CUSTOM CSS GLOBAL (TEMA MODERN VIBRANT LIGHT) ---
+# --- 3. CUSTOM CSS GLOBAL (TEMA MODERN OCEAN GLOW) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800;900&display=swap');
@@ -129,24 +127,7 @@ def auth_page():
 
 # --- 5. FUNGSI DASHBOARD UTAMA ---
 def show_dashboard():
-    def get_coordinates(df):
-        geolocator = Nominatim(user_agent="ombudsman_dash_v8")
-        geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
-        loc_col = 'Lokasi LM' if 'Lokasi LM' in df.columns else 'Terlapor'
-        unique_locations = df[loc_col].dropna().unique()
-        location_map = {}
-        progress_bar = st.progress(0, text="Memetakan lokasi...")
-        for i, loc in enumerate(unique_locations):
-            try:
-                loc_data = geocode(f"{loc}, Indonesia")
-                location_map[loc] = [loc_data.latitude, loc_data.longitude] if loc_data else [-6.2088, 106.8456]
-            except: location_map[loc] = [-6.2088, 106.8456]
-            progress_bar.progress((i + 1) / len(unique_locations))
-        progress_bar.empty()
-        df['lat'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[0])
-        df['lon'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[1])
-        return df
-
+    # Load data anti-error
     @st.cache_data
     def load_data():
         try:
@@ -158,41 +139,66 @@ def show_dashboard():
                     df.rename(columns={col: 'Tanggal Laporan'}, inplace=True)
                     has_date = True
                     break
-            if ('Terlapor' in df.columns or 'Lokasi LM' in df.columns) and ('lat' not in df.columns): df = get_coordinates(df)
+                    
+            loc_col = 'Lokasi LM' if 'Lokasi LM' in df.columns else 'Terlapor' if 'Terlapor' in df.columns else None
+            if loc_col and 'lat' not in df.columns:
+                # Titik dummy sementara biar map nggak nge-blank kalau gagal narik koordinat
+                df['lat'] = -6.1754 
+                df['lon'] = 106.8272
+                
             return df, has_date
-        except: return pd.DataFrame(), False
+        except Exception as e:
+            return pd.DataFrame(), False
 
     data, has_date = load_data()
     
-    if not data.empty and has_date:
+    if data.empty:
+        st.error("❌ Gagal memuat data! Pastikan file 'data_tanah1.xlsx' ada di folder yang benar.")
+        return
+
+    # Hitung data mangkrak (Overdue)
+    total_mangkrak = 0
+    if has_date and 'Status' in data.columns:
         data['Hari_Berjalan'] = (datetime.now() - data['Tanggal Laporan']).dt.days
         total_mangkrak = len(data[(data['Hari_Berjalan'] > 30) & (~data['Status'].str.contains('Selesai|Tutup', case=False, na=False))])
-    else:
-        total_mangkrak = 0
 
+    # --- FILTER SIDEBAR LENGKAP ---
     with st.sidebar:
         st.markdown("<h2 style='color:#0ea5e9; font-weight:900;'>⚖️ Ombudsman</h2>", unsafe_allow_html=True)
         search_query = st.text_input("🔍 Cari Data (Nama/Wilayah):")
         st.divider()
-        start_date, end_date = None, None
-        data_filtered = data
         
+        data_filtered = data.copy()
+        
+        # Filter Tanggal (Safe version)
         if has_date:
             min_d, max_d = data['Tanggal Laporan'].min().date(), data['Tanggal Laporan'].max().date()
-            dr = st.date_input("📅 Periode Laporan", value=[min_d, max_d], min_value=min_d, max_value=max_d)
-            if isinstance(dr, list) and len(dr) == 2: 
-                data_filtered = data[(data['Tanggal Laporan'].dt.date >= dr[0]) & (data['Tanggal Laporan'].dt.date <= dr[1])]
+            if min_d != max_d:
+                dr = st.date_input("📅 Periode Laporan", value=(min_d, max_d), min_value=min_d, max_value=max_d)
+                if len(dr) == 2: 
+                    data_filtered = data_filtered[(data_filtered['Tanggal Laporan'].dt.date >= dr[0]) & (data_filtered['Tanggal Laporan'].dt.date <= dr[1])]
         
+        # Filter Pencarian Teks
         if search_query: 
             data_filtered = data_filtered[data_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)]
             
+        # Filter Asisten
         if 'Asisten' in data.columns:
-            sel_asisten = st.selectbox("👤 Asisten:", ["Semua Asisten"] + sorted(data_filtered["Asisten"].dropna().unique().tolist()))
-            if sel_asisten != "Semua Asisten": data_filtered = data_filtered[data_filtered["Asisten"] == sel_asisten]
+            sel_asisten = st.selectbox("👤 Asisten:", ["Semua Asisten"] + sorted(data["Asisten"].dropna().unique().tolist()))
+            if sel_asisten != "Semua Asisten": 
+                data_filtered = data_filtered[data_filtered["Asisten"] == sel_asisten]
+                
+        # Filter Wilayah
+        if 'Lokasi LM' in data.columns:
+            sel_wilayah = st.selectbox("📍 Wilayah LM:", ["Semua Wilayah"] + sorted(data["Lokasi LM"].dropna().unique().tolist()))
+            if sel_wilayah != "Semua Wilayah":
+                data_filtered = data_filtered[data_filtered["Lokasi LM"] == sel_wilayah]
             
+        # Filter Status
         if 'Status' in data.columns:
-            sel_status = st.multiselect("📊 Status:", ["Semua Status"] + sorted(data_filtered["Status"].dropna().unique().tolist()), default="Semua Status")
-            if "Semua Status" not in sel_status and sel_status: data_filtered = data_filtered[data_filtered["Status"].isin(sel_status)]
+            sel_status = st.multiselect("📊 Status:", ["Semua Status"] + sorted(data["Status"].dropna().unique().tolist()), default="Semua Status")
+            if "Semua Status" not in sel_status and sel_status: 
+                data_filtered = data_filtered[data_filtered["Status"].isin(sel_status)]
 
         st.markdown("---")
         if st.button("🖨️ Cetak PDF", use_container_width=True):
@@ -202,6 +208,7 @@ def show_dashboard():
             st.session_state['logged_in'] = False
             st.rerun()
 
+    # --- HEADER DASHBOARD ---
     st.markdown("""
     <div class="header-container">
         <h1 class="header-title">✨ Command Center Keasistenan IV</h1>
@@ -213,21 +220,25 @@ def show_dashboard():
         total = len(data_filtered)
         selesai = len(data_filtered[data_filtered['Status'].str.contains('Selesai|Tutup', case=False, na=False)]) if 'Status' in data_filtered.columns else 0
         
+        # METRIK ATAS
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Laporan", f"{total}", "+ Kasus Baru")
         c2.metric("Selesai", f"{selesai}", f"{(selesai/total*100 if total>0 else 0):.0f}% Rate")
         c3.metric("Diproses", f"{total-selesai}", delta_color="inverse")
-        c4.metric("Target", "10", "Tahunan") 
+        c4.metric("Overdue (>30 Hari)", f"{total_mangkrak}", delta_color="inverse") 
 
+        # GRAFIK TREN (Area Line)
         st.markdown('<div class="card-container card-blue"><h4>📈 Tren Kasus Masuk</h4>', unsafe_allow_html=True)
         if has_date:
             trend = data_filtered.set_index('Tanggal Laporan').resample('ME').size().reset_index(name='Jumlah')
-            fig = px.area(trend, x='Tanggal Laporan', y='Jumlah', line_shape='spline', markers=True)
-            fig.update_traces(line_color='#0ea5e9', fillcolor='rgba(14, 165, 233, 0.2)', marker=dict(size=8, color='#f97316'))
+            # Fix area chart error: Use px.line with fill='tozeroy'
+            fig = px.line(trend, x='Tanggal Laporan', y='Jumlah', line_shape='spline', markers=True)
+            fig.update_traces(line_color='#0ea5e9', fill='tozeroy', fillcolor='rgba(14, 165, 233, 0.2)', marker=dict(size=8, color='#f97316'))
             fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', height=300, xaxis_title=None, yaxis_title="Jumlah")
             st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
+        # INSIGHT & MAP
         c_map, c_sum = st.columns([7, 3])
         with c_sum:
             top_w = data_filtered['Lokasi LM'].mode()[0] if 'Lokasi LM' in data_filtered.columns else "-"
@@ -249,11 +260,12 @@ def show_dashboard():
         with c_map:
             st.markdown('<div class="card-container card-blue"><h4>📍 Live Map</h4>', unsafe_allow_html=True)
             if 'lat' in data_filtered.columns:
-                fig_map = px.scatter_mapbox(data_filtered, lat='lat', lon='lon', color='Status', size_max=15, zoom=3.5, mapbox_style="carto-positron")
+                fig_map = px.scatter_mapbox(data_filtered, lat='lat', lon='lon', color='Status' if 'Status' in data_filtered.columns else None, size_max=15, zoom=3.5, mapbox_style="carto-positron")
                 fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=380, paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_map, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
+        # GRAFIK BAWAH (YANG TADI SEMPAT DIHAPUS, SEKARANG KEMBALI)
         r1, r2 = st.columns([6, 4])
         with r1:
             st.markdown('<div class="card-container card-blue"><h4>📊 Wilayah Terbanyak</h4>', unsafe_allow_html=True)
@@ -278,10 +290,10 @@ def show_dashboard():
                 st.plotly_chart(fig_t, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # BAGIAN TABEL YANG TADI HILANG SUDAH KEMBALI!
+        # TABEL BAWAH
         with st.expander("📚 Buka Detail Data Tabel", expanded=True):
             st.markdown('<div class="card-container" style="border-top: none; box-shadow: none;">', unsafe_allow_html=True)
-            kolom_dihapus = ['lat', 'lon', 'Hari_Berjalan', 'ni', 'Ni', 'NI', 'maladministrasi', 'Maladministrasi', 'Jenis Maladministrasi']
+            kolom_dihapus = ['lat', 'lon', 'Hari_Berjalan', 'ni', 'Ni', 'NI', 'maladministrasi', 'Maladministrasi']
             view_df = data_filtered.drop(columns=kolom_dihapus, errors='ignore')
             
             preferred_cols = ['Nomor Arsip', 'Nama Pelapor', 'Lokasi LM', 'Asisten', 'Status', 'Tanggal Laporan', 'Tahun']
