@@ -59,10 +59,6 @@ st.markdown("""
         border-top: 4px solid transparent;
         transition: transform 0.2s, box-shadow 0.2s;
     }
-    .card-container:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-    }
     
     /* Aksen Warna Kartu */
     .card-blue { border-top-color: #004a99; }
@@ -88,61 +84,44 @@ st.markdown("""
         font-size: 2rem;
     }
 
-    /* Sidebar & Print Button */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #eaeaea;
-    }
-    .print-btn {
-        background-color: #e65100;
-        color: white;
-        padding: 12px;
-        border-radius: 8px;
-        text-align: center;
-        font-weight: bold;
-        cursor: pointer;
-        transition: 0.3s;
-        border: none;
-        width: 100%;
-        box-shadow: 0 4px 6px rgba(230, 81, 0, 0.2);
-    }
-    .print-btn:hover {
-        background-color: #bf360c;
-        box-shadow: 0 6px 8px rgba(230, 81, 0, 0.3);
-    }
-
-    /* Mode Cetak */
-    /* Mode Cetak - Diperbaiki agar print semua halaman */
+    /* --- OPSI NUKLIR UNTUK MODE CETAK (PRINT) --- */
     @media print {
-        /* Sembunyikan elemen yang tidak perlu dicetak */
+        @page {
+            size: A4 portrait;
+            margin: 10mm;
+        }
+
+        /* 1. Sembunyikan semua UI Streamlit yang tidak perlu dicetak */
         [data-testid="stSidebar"], 
-        header, 
+        [data-testid="stHeader"], 
         footer, 
-        .stDeployButton,
-        [data-testid="stToolbar"],
-        .no-print { 
+        [data-testid="stToolbar"], 
+        .stDeployButton { 
             display: none !important; 
         }
 
-        /* BUKA KUNCI SCROLL STREAMLIT AGAR BISA PRINT BANYAK HALAMAN */
-        html, body, .stApp, .main, [data-testid="stAppViewContainer"], [data-testid="stMainBlockContainer"] {
-            height: auto !important;
-            min-height: auto !important;
+        /* 2. Bongkar paksa SEMUA kuncian scroll dan tinggi elemen */
+        html, body, .stApp, .main, .block-container, 
+        [data-testid="stAppViewContainer"], 
+        [data-testid="stMainBlockContainer"] {
             overflow: visible !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
             position: relative !important;
             display: block !important;
             background-color: white !important;
-            color: black !important;
+            width: 100% !important;
         }
 
-        /* Pastikan kartu dan grafik tidak terpotong di tengah halaman (page break) */
-        .card-container, .js-plotly-plot, [data-testid="stMetric"] {
+        /* 3. Pastikan kartu dan metrik tidak terbelah di tengah kertas */
+        .card-container, [data-testid="stMetric"], .js-plotly-plot, .stDataFrame {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
         }
-
-        /* Sesuaikan lebar grafik */
-        .js-plotly-plot {
+        
+        /* 4. Sesuaikan lebar plotly saat print */
+        .js-plotly-plot .plotly {
             width: 100% !important;
         }
     }
@@ -152,12 +131,10 @@ st.markdown("""
 # --- 3. FUNGSI LOGIKA ---
 
 def get_coordinates(df):
-    """Geocoding otomatis - Gunakan Lokasi LM agar peta menyebar"""
     geolocator = Nominatim(user_agent="ombudsman_dashboard_final_v2")
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
     
     loc_col = 'Lokasi LM' if 'Lokasi LM' in df.columns else 'Terlapor'
-    
     unique_locations = df[loc_col].dropna().unique()
     location_map = {}
     
@@ -168,7 +145,7 @@ def get_coordinates(df):
             if location:
                 location_map[loc] = [location.latitude, location.longitude]
             else:
-                location_map[loc] = [-6.2088, 106.8456] # Default Jakarta
+                location_map[loc] = [-6.2088, 106.8456] 
         except:
             location_map[loc] = [-6.2088, 106.8456]
         progress_bar.progress((i + 1) / len(unique_locations))
@@ -183,7 +160,6 @@ def load_data():
     try:
         df = pd.read_excel("data_tanah1.xlsx")
         
-        # Auto-detect tanggal
         date_col_found = False
         for col in df.columns:
             if any(x in col.lower() for x in ['tanggal', 'tgl', 'date']):
@@ -192,7 +168,6 @@ def load_data():
                 date_col_found = True
                 break
         
-        # Auto-geocoding
         if ('Terlapor' in df.columns or 'Lokasi LM' in df.columns) and ('lat' not in df.columns):
             df = get_coordinates(df)
             
@@ -203,7 +178,6 @@ def load_data():
 
 data, has_date = load_data()
 
-# Hitung Total Mangkrak Global di Awal
 if not data.empty and has_date:
     today = datetime.now()
     data['Hari_Berjalan'] = (today - data['Tanggal Laporan']).dt.days
@@ -225,47 +199,35 @@ with st.sidebar:
 
     start_date, end_date = None, None
 
-    # Filter Tanggal
     if has_date:
         min_date = data['Tanggal Laporan'].min().date()
         max_date = data['Tanggal Laporan'].max().date()
         
-        date_range = st.date_input(
-            "📅 Periode Laporan",
-            value=[min_date, max_date],
-            min_value=min_date,
-            max_value=max_date
-        )
-        
+        date_range = st.date_input("📅 Periode Laporan", value=[min_date, max_date], min_value=min_date, max_value=max_date)
         if isinstance(date_range, list) and len(date_range) == 2:
             start_date, end_date = date_range
-            data_filtered = data[(data['Tanggal Laporan'].dt.date >= start_date) & 
-                                 (data['Tanggal Laporan'].dt.date <= end_date)]
+            data_filtered = data[(data['Tanggal Laporan'].dt.date >= start_date) & (data['Tanggal Laporan'].dt.date <= end_date)]
         else:
             data_filtered = data
     else:
         data_filtered = data
 
-    # Terapkan Global Search
     if search_query:
         mask = data_filtered.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
         data_filtered = data_filtered[mask]
 
-    # Filter Asisten
     if 'Asisten' in data.columns:
         asisten_list = ["Semua Asisten"] + sorted(data_filtered["Asisten"].dropna().unique().tolist())
         sel_asisten = st.selectbox("👤 Asisten:", asisten_list)
         if sel_asisten != "Semua Asisten":
             data_filtered = data_filtered[data_filtered["Asisten"] == sel_asisten]
 
-    # Filter Wilayah
     if 'Lokasi LM' in data.columns:
         wilayah_list = ["Semua Wilayah"] + sorted(data_filtered["Lokasi LM"].dropna().unique().tolist())
         sel_wilayah = st.selectbox("📍 Wilayah LM:", wilayah_list)
         if sel_wilayah != "Semua Wilayah":
             data_filtered = data_filtered[data_filtered["Lokasi LM"] == sel_wilayah]
             
-    # Filter Status
     if 'Status' in data.columns:
         status_list = ["Semua Status"] + sorted(data_filtered["Status"].dropna().unique().tolist())
         sel_status = st.multiselect("📊 Status:", status_list, default="Semua Status")
@@ -274,10 +236,20 @@ with st.sidebar:
 
     st.markdown("---")
     
-    if st.sidebar.button("🖨️ Cetak Laporan ke PDF"):
-        js = "window.print();"
-        st.components.v1.html(f"<script>{js}</script>", height=0, width=0)
-        st.sidebar.success("Gunakan setelan 'Save as PDF' pada jendela print.")
+    # PERBAIKAN: Gunakan window.parent.print() agar mencetak halaman utama, bukan iframe kosong
+    if st.button("🖨️ Cetak Laporan ke PDF", type="primary", use_container_width=True):
+        st.components.v1.html(
+            """
+            <script>
+                // Memberi sedikit jeda agar Streamlit memproses klik
+                setTimeout(function() {
+                    window.parent.print();
+                }, 100);
+            </script>
+            """,
+            height=0, 
+            width=0
+        )
     
     st.caption("© 2026 Keasistenan Utama IV")
 
@@ -320,19 +292,15 @@ if not data_filtered.empty:
             fig_trend.update_traces(line_color='#e65100', line_width=3)
             fig_trend.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
             st.plotly_chart(fig_trend, use_container_width=True)
-        else:
-            st.info("Data tidak cukup untuk menampilkan tren bulanan.")
     elif 'Tahun' in data_filtered.columns:
         st.markdown("#### 📉 Tren Laporan Masuk (Tahunan)")
         trend_data = data_filtered.groupby('Tahun').size().reset_index(name='Jumlah Laporan')
         if not trend_data.empty:
             fig_trend = px.line(trend_data, x='Tahun', y='Jumlah Laporan', markers=True)
-            fig_trend.update_xaxes(type='category') # Paksa tahun jadi kategori (tanpa desimal)
+            fig_trend.update_xaxes(type='category')
             fig_trend.update_traces(line_color='#e65100', line_width=3)
             fig_trend.update_layout(plot_bgcolor='white', height=300, xaxis_title=None, yaxis_title="Jumlah Kasus")
             st.plotly_chart(fig_trend, use_container_width=True)
-    else:
-        st.info("Data Tanggal atau Tahun tidak tersedia untuk memuat tren.")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # --- SECTION 2: MAP & NARRATIVE ---
@@ -371,16 +339,13 @@ if not data_filtered.empty:
                 fig_map.update_layout(
                     height=400, 
                     margin={"r":0,"t":0,"l":0,"b":0},
-                    mapbox_style="carto-positron",
                     dragmode="pan", 
                     hovermode="closest"
                 )
                 st.plotly_chart(fig_map, use_container_width=True, config={'scrollZoom': True})
-            else:
-                st.warning("Koordinat tidak tersedia.")
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- SECTION 3: CATEGORY CHARTS (WILAYAH & TARGET TAHUNAN) ---
+    # --- SECTION 3: CATEGORY CHARTS ---
     st.markdown('<div class="card-container card-blue">', unsafe_allow_html=True)
     row_chart1, row_chart2 = st.columns([6, 4])
     
@@ -404,7 +369,6 @@ if not data_filtered.empty:
 
     with row_chart2:
         st.subheader("📊 Presentasi Pencapaian Target")
-        # --- FIX: Cek berdasarkan 'Tahun' ATAU 'Tanggal' ---
         if 'Tahun' in data_filtered.columns or has_date:
             temp_df = data_filtered.copy()
             if 'Tahun' not in temp_df.columns:
@@ -412,7 +376,7 @@ if not data_filtered.empty:
                 
             target_df = temp_df.groupby('Tahun').size().reset_index(name='Realisasi')
             target_df['Target'] = 10 
-            target_df['Tahun'] = target_df['Tahun'].astype(str) # Agar tahun tidak pakai koma
+            target_df['Tahun'] = target_df['Tahun'].astype(str)
             
             fig_target = px.bar(target_df, x='Tahun', y=['Realisasi', 'Target'], barmode='group',
                                 color_discrete_map={'Realisasi': '#003366', 'Target': '#e65100'})
@@ -421,12 +385,9 @@ if not data_filtered.empty:
                 height=350, 
                 xaxis_title=None, 
                 yaxis_title="Jumlah Kasus",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                legend_title_text=None
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             st.plotly_chart(fig_target, use_container_width=True)
-        else:
-            st.info("Pastikan ada kolom 'Tahun' di Excel untuk memuat Grafik Target.")
             
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -434,7 +395,6 @@ if not data_filtered.empty:
     with st.expander("📚 Buka Detail Data Tabel", expanded=True):
         st.markdown('<div class="card-container">', unsafe_allow_html=True)
         
-        # --- FIX: Daftar kolom yang diwajibkan untuk dihapus ---
         kolom_dihapus = ['lat', 'lon', 'Hari_Berjalan', 'ni', 'Ni', 'NI', 'maladministrasi', 'Maladministrasi', 'Jenis Maladministrasi']
         view_df = data_filtered.drop(columns=kolom_dihapus, errors='ignore')
         
