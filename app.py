@@ -7,6 +7,8 @@ from geopy.extra.rate_limiter import RateLimiter
 from datetime import datetime
 import streamlit.components.v1 as components
 import time
+from streamlit_gsheets import GSheetsConnection  # Pastikan ini sudah di-import
+
 
 # --- 1. KONFIGURASI HALAMAN ---
 st.set_page_config(
@@ -196,26 +198,27 @@ def show_dashboard():
         df['lat'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[0])
         df['lon'] = df[loc_col].map(lambda x: location_map.get(x, [-6.2088, 106.8456])[1])
         return df
+    
+@st.cache_data(ttl=600)
+def load_data():
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df = conn.read(ttl=600)
+        df = df.dropna(how="all")
+        
+        date_col_found = False
+        for col in df.columns:
+            if any(x in col.lower() for x in ['tanggal', 'tgl', 'date']):
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+                df.rename(columns={col: 'Tanggal Laporan'}, inplace=True)
+                date_col_found = True
+                break
+                
+        return df, date_col_found
 
-    @st.cache_data
-    def load_data():
-        try:
-            df = pd.read_excel("data_tanah1.xlsx")
-            date_col_found = False
-            for col in df.columns:
-                if any(x in col.lower() for x in ['tanggal', 'tgl', 'date']):
-                    df[col] = pd.to_datetime(df[col], errors='coerce')
-                    df.rename(columns={col: 'Tanggal Laporan'}, inplace=True)
-                    date_col_found = True
-                    break
-            if ('Terlapor' in df.columns or 'Lokasi LM' in df.columns) and ('lat' not in df.columns):
-                df = get_coordinates(df)
-            return df, date_col_found
-        except Exception as e:
-            st.error(f"Gagal memuat data: {e}")
-            st.stop()
-
-    data, has_date = load_data()
+    except Exception as e:
+        st.error(f"❌ Koneksi Database Terputus: {e}")
+        return pd.DataFrame(), False
 
     if not data.empty and has_date:
         today = datetime.now()
@@ -242,6 +245,14 @@ def show_dashboard():
 
         start_date, end_date = None, None
         data_filtered = data.copy()
+
+        with st.sidebar:
+    # ... (kode logo dan menu navigasi abang yang lain) ...
+    
+            st.markdown("---")
+        if st.button("🔄 Tarik Data Terbaru", use_container_width=True):
+            st.cache_data.clear() # Menghapus cache lama
+        st.rerun() # Refresh halaman
 
         # Perbaikan bug tuple pada date_input
         if has_date:
